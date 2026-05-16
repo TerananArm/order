@@ -3,38 +3,52 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>ขนมจีนแม่บุญส่ง - POS</title>
-    <!-- Dependencies -->
+    <title>แม่บุญส่ง POS - Stable Version</title>
+    
+    <!-- Core Dependencies -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Icons & Utils -->
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://unpkg.com/lucide-react@latest"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    
     <link href="https://fonts.googleapis.com/css2?family=Anuphan:wght@400;600;700;800&display=swap" rel="stylesheet">
+    
     <style>
-        body { font-family: 'Anuphan', sans-serif; -webkit-tap-highlight-color: transparent; }
+        body { font-family: 'Anuphan', sans-serif; -webkit-tap-highlight-color: transparent; background-color: #FDFCFB; color: #1e293b; margin: 0; padding: 0; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .animate-in { animation: fadeIn 0.4s ease-out forwards; }
-        .receipt-cut-edge { height: 12px; background: radial-gradient(circle, transparent, transparent 6px, white 6px, white); background-size: 16px 24px; background-position: left top; background-repeat: repeat-x; margin-top: -6px; filter: drop-shadow(0 4px 4px rgba(0,0,0,0.05)); }
-        .active-scale:active { transform: scale(0.97); }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-in { animation: fadeIn 0.3s ease-out forwards; }
+        .active-scale:active { transform: scale(0.96); transition: transform 0.1s; }
+        
+        /* Loading & Error States */
+        #app-status { display: flex; align-items: center; justify-content: center; height: 100vh; flex-direction: column; gap: 1.5rem; text-align: center; padding: 2rem; }
+        .spinner { width: 48px; height: 48px; border: 5px solid #fee2e2; border-top: 5px solid #b91c1c; border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .hidden { display: none !important; }
+        .error-box { background: #fef2f2; border: 2px solid #fee2e2; padding: 2rem; rounded-3xl: 1.5rem; color: #991b1b; max-width: 320px; }
     </style>
 </head>
-<body class="bg-[#FDFCFB] text-slate-900 overflow-x-hidden">
-    <div id="root"></div>
+<body>
+    <div id="root">
+        <div id="app-status">
+            <div id="loader-icon" class="spinner"></div>
+            <div id="error-display" class="error-box hidden">
+                <h2 style="font-weight: 800; font-size: 1.25rem; margin-bottom: 0.5rem;">เกิดข้อผิดพลาด</h2>
+                <p id="error-message" style="font-size: 0.875rem; margin-bottom: 1rem;">ไม่สามารถโหลดระบบได้ กรุณาเช็คการเชื่อมต่ออินเทอร์เน็ต</p>
+                <button onclick="window.location.reload()" style="background: #b91c1c; color: white; padding: 0.75rem 1.5rem; border-radius: 99px; font-weight: 700;">ลองอีกครั้ง</button>
+            </div>
+            <p id="status-text" style="font-weight: 700; color: #b91c1c;">กำลังเตรียมระบบ POS...</p>
+        </div>
+    </div>
 
     <script type="text/babel">
-        const { useState, useEffect, useRef } = React;
-        const { 
-            Plus, Minus, ShoppingCart, ChevronLeft, Receipt, 
-            CheckCircle2, Trash2, UtensilsCrossed, Check, 
-            CreditCard, Banknote, Heart, Image: ImageIcon, 
-            ClipboardList, LayoutGrid, ReceiptText, Search
-        } = LucideReact;
-
+        // --- 1. CONFIG & DATA ---
         const MENU = {
             khanomJeenRad: [
                 { id: 'kjr_kathi', name: 'ขนมจีน (ราดกะทิ)', price: 40, category: 'ขนมจีนราดน้ำ' },
@@ -43,12 +57,6 @@
                 { id: 'kjr_ngiao', name: 'ขนมจีน (ราดน้ำเงี้ยว)', price: 40, category: 'ขนมจีนราดน้ำ' },
                 { id: 'kjr_prik', name: 'ขนมจีน (ราดน้ำพริก)', price: 40, category: 'ขนมจีนราดน้ำ' },
                 { id: 'kjr_tai', name: 'ขนมจีน (ราดไตปลา)', price: 40, category: 'ขนมจีนราดน้ำ' },
-            ],
-            khanomJeenSet: [
-                { id: 'kjs_kathi', name: 'ชุดเล็ก (แยกน้ำกะทิ)', price: 50, category: 'ชุดแยกน้ำ' },
-                { id: 'kjs_pa', name: 'ชุดเล็ก (แยกน้ำยาป่า)', price: 50, category: 'ชุดแยกน้ำ' },
-                { id: 'kjs_green', name: 'ชุดเล็ก (แยกเขียวหวาน)', price: 50, category: 'ชุดแยกน้ำ' },
-                { id: 'kjs_ngiao', name: 'ชุดเล็ก (แยกน้ำเงี้ยว)', price: 50, category: 'ชุดแยกน้ำ' },
             ],
             somTum: [
                 { id: 'st_thai', name: 'ตำไทย', price: 50, category: 'ส้มตำ' },
@@ -73,12 +81,16 @@
 
         const CURRY_OPTIONS = ['น้ำยากะทิ', 'น้ำยาป่า', 'แกงเขียวหวาน', 'น้ำเงี้ยว', 'น้ำพริก', 'แกงไตปลา'];
 
+        // --- 2. HELPERS ---
+        const Icon = ({ name, size = 24, className = "", strokeWidth = 2 }) => {
+            const LucideIcon = (window.LucideReact && window.LucideReact[name]) || (window.LucideReact && window.LucideReact.HelpCircle);
+            return LucideIcon ? <LucideIcon size={size} className={className} strokeWidth={strokeWidth} /> : <span style={{width: size, height: size, display: 'inline-block'}}></span>;
+        };
+
         const generateBankQRData = (accountNo, amount) => {
             const formatID = (id, value) => id + value.length.toString().padStart(2, '0') + value;
             const target = accountNo.replace(/[^0-9]/g, '');
-            let payload = '000201010212'; 
-            let merchantInfo = formatID('00', 'A000000677010111') + formatID('01', target.padStart(13, '0')); 
-            payload += formatID('29', merchantInfo) + '5303764'; 
+            let payload = '000201010212' + formatID('29', formatID('00', 'A000000677010111') + formatID('01', target.padStart(13, '0'))) + '5303764'; 
             if (amount > 0) payload += formatID('54', parseFloat(amount).toFixed(2)); 
             payload += '5802TH6304'; 
             const crc16 = (data) => {
@@ -93,35 +105,45 @@
             return payload + crc16(payload);
         };
 
+        // --- 3. MAIN COMPONENT ---
         const App = () => {
-            const [tables, setTables] = useState({});
-            const [activeTable, setActiveTable] = useState(null);
-            const [view, setView] = useState('table-selection');
-            const [activeCategory, setActiveCategory] = useState('all');
-            const [billData, setBillData] = useState(null);
-            const [paymentMethod, setPaymentMethod] = useState('cash');
-            const [receivedAmount, setReceivedAmount] = useState('');
-            const [generatedImg, setGeneratedImg] = useState(null);
-            const [isProcessing, setIsProcessing] = useState(false);
-            const [fourGirlsModal, setFourGirlsModal] = useState(false);
-            const [tempCurries, setTempCurries] = useState([]);
-            const [showPayConfirm, setShowPayConfirm] = useState(false);
-            const receiptRef = useRef(null);
+            // Load from LocalStorage for stability
+            const [tables, setTables] = React.useState(() => {
+                const saved = localStorage.getItem('mb_pos_tables');
+                return saved ? JSON.parse(saved) : {};
+            });
+            const [activeTable, setActiveTable] = React.useState(null);
+            const [view, setView] = React.useState('table-selection');
+            const [activeCategory, setActiveCategory] = React.useState('all');
+            const [billData, setBillData] = React.useState(null);
+            const [paymentMethod, setPaymentMethod] = React.useState('cash');
+            const [generatedImg, setGeneratedImg] = React.useState(null);
+            const [isProcessing, setIsProcessing] = React.useState(false);
+            const [fourGirlsModal, setFourGirlsModal] = React.useState(false);
+            const [tempCurries, setTempCurries] = React.useState([]);
+            const [showPayConfirm, setShowPayConfirm] = React.useState(false);
+            const receiptRef = React.useRef(null);
+
+            // Save to LocalStorage whenever tables change
+            React.useEffect(() => {
+                localStorage.setItem('mb_pos_tables', JSON.stringify(tables));
+            }, [tables]);
 
             const getTableTotal = (num) => (tables[num] || []).reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
             const addItem = (item, details = null) => {
-                if (!activeTable) return;
                 if (item.id === 'kjo_4girls' && !details) { setTempCurries([]); setFourGirlsModal(true); return; }
                 setTables(prev => {
                     const list = prev[activeTable] || [];
                     const id = details ? `${item.id}-${details.join('-')}` : item.id;
                     const idx = list.findIndex(i => i.entryId === id);
+                    let newList;
                     if (idx > -1) {
-                        const next = [...list]; next[idx].quantity += 1;
-                        return { ...prev, [activeTable]: next };
+                        newList = [...list]; newList[idx].quantity += 1;
+                    } else {
+                        newList = [...list, { ...item, entryId: id, details, quantity: 1 }];
                     }
-                    return { ...prev, [activeTable]: [...list, { ...item, entryId: id, details, quantity: 1 }] };
+                    return { ...prev, [activeTable]: newList };
                 });
             };
 
@@ -131,7 +153,10 @@
                     const idx = list.findIndex(i => i.entryId === id);
                     if (idx === -1) return prev;
                     const next = [...list];
-                    if (next[idx].quantity > 1) { next[idx].quantity -= 1; return { ...prev, [activeTable]: next }; }
+                    if (next[idx].quantity > 1) { 
+                        next[idx].quantity -= 1; 
+                        return { ...prev, [activeTable]: next }; 
+                    }
                     return { ...prev, [activeTable]: list.filter(i => i.entryId !== id) };
                 });
             };
@@ -142,66 +167,92 @@
                 setBillData(null); setView('table-selection'); setShowPayConfirm(false); setActiveTable(null);
             };
 
+            const handleCheckout = () => {
+                setBillData({ 
+                    tableId: activeTable, 
+                    items: tables[activeTable], 
+                    total: getTableTotal(activeTable), 
+                    date: new Date().toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) 
+                }); 
+                setView('checkout');
+            };
+
             const createBillImage = async () => {
                 if (!receiptRef.current) return;
                 setIsProcessing(true);
                 try {
-                    const canvas = await html2canvas(receiptRef.current, { backgroundColor: '#ffffff', scale: 3, useCORS: true });
+                    const canvas = await window.html2canvas(receiptRef.current, { backgroundColor: '#ffffff', scale: 2, useCORS: true });
                     setGeneratedImg(canvas.toDataURL("image/png"));
-                } catch (e) { alert("เกิดข้อผิดพลาดในการสร้างรูป"); } finally { setIsProcessing(false); }
+                } catch (e) { alert("บันทึกรูปไม่ได้ กรุณาลองใหม่"); } finally { setIsProcessing(false); }
             };
 
             const categories = ['all', ...Object.keys(MENU)];
             const getCategoryLabel = (key) => key === 'all' ? 'ทั้งหมด' : MENU[key][0].category;
 
             return (
-                <div className="min-h-screen">
-                    <header className="bg-white border-b p-4 sticky top-0 z-50 flex justify-between items-center shadow-sm">
+                <div className="min-h-screen max-w-lg mx-auto bg-[#FDFCFB]">
+                    {/* Top Bar */}
+                    <header className="bg-white/90 backdrop-blur-md border-b border-slate-100 p-4 sticky top-0 z-50 flex justify-between items-center shadow-sm">
                         <div onClick={() => { setView('table-selection'); setActiveTable(null); }} className="cursor-pointer">
-                            <h1 className="text-xl font-black text-red-700 flex items-center gap-2">แม่บุญส่ง <span className="text-[10px] bg-red-100 px-2 py-0.5 rounded-full uppercase tracking-widest font-bold">POS</span></h1>
+                            <h1 className="text-xl font-black text-red-700 flex items-center gap-2">แม่บุญส่ง <span className="text-[10px] bg-red-100 text-red-700 px-2 py-0.5 rounded-full uppercase font-bold">POS</span></h1>
                         </div>
-                        {view !== 'table-selection' && <button onClick={() => setView('table-selection')} className="p-2 bg-slate-50 rounded-xl text-slate-500"><LayoutGrid size={22} /></button>}
+                        {view !== 'table-selection' && (
+                            <button onClick={() => setView('table-selection')} className="p-2.5 bg-slate-50 rounded-2xl text-slate-400 active-scale"><Icon name="LayoutGrid" size={20} /></button>
+                        )}
                     </header>
 
-                    <main className="max-w-md mx-auto p-4">
+                    <main className="p-4">
+                        {/* 1. TABLE SELECTION */}
                         {view === 'table-selection' && (
-                            <div className="animate-in grid grid-cols-3 gap-4 pt-4">
-                                {[1,2,3,4,5,6,7,8,9].map(num => (
-                                    <button key={num} onClick={() => { setActiveTable(num); setView('order-entry'); }} 
-                                        className={`aspect-square rounded-[2rem] bg-white border flex flex-col items-center justify-center shadow-sm transition-all active-scale ${getTableTotal(num) > 0 ? 'border-red-500 ring-4 ring-red-50 shadow-lg' : 'border-slate-100'}`}>
-                                        <span className={`text-4xl font-black ${getTableTotal(num) > 0 ? 'text-red-700' : 'text-slate-200'}`}>{num}</span>
-                                        {getTableTotal(num) > 0 && <span className="bg-red-500 text-white text-[9px] px-2 py-0.5 rounded-full mt-1 font-bold">฿{getTableTotal(num)}</span>}
-                                        <span className="text-[9px] font-black uppercase text-slate-300 mt-1 tracking-widest">Table</span>
-                                    </button>
-                                ))}
+                            <div className="animate-in pt-2">
+                                <h2 className="text-xl font-black mb-6 flex items-center gap-2 px-2"><Icon name="Users" size={20} className="text-red-600" /> เลือกโต๊ะลูกค้า</h2>
+                                <div className="grid grid-cols-3 gap-4">
+                                    {[1,2,3,4,5,6,7,8,9].map(num => {
+                                        const total = getTableTotal(num);
+                                        return (
+                                            <button key={num} onClick={() => { setActiveTable(num); setView('order-entry'); }} 
+                                                className={`aspect-square rounded-[2rem] bg-white border flex flex-col items-center justify-center shadow-sm transition-all active-scale ${total > 0 ? 'border-red-500 ring-4 ring-red-50 shadow-red-100' : 'border-slate-100'}`}>
+                                                <span className={`text-4xl font-black ${total > 0 ? 'text-red-700' : 'text-slate-200'}`}>{num}</span>
+                                                {total > 0 && <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full mt-1 font-black">฿{total}</span>}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             </div>
                         )}
 
+                        {/* 2. ORDER ENTRY */}
                         {view === 'order-entry' && (
-                            <div className="animate-in">
+                            <div className="animate-in pb-28">
                                 <div className="bg-red-700 text-white p-6 rounded-[2.5rem] flex justify-between items-center mb-6 shadow-xl shadow-red-100">
-                                    <div className="flex items-center gap-3">
+                                    <div className="flex items-center gap-4">
                                         <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center font-black text-2xl">{activeTable}</div>
-                                        <div><h2 className="text-xl font-black leading-none">โต๊ะ {activeTable}</h2><p className="text-[10px] opacity-60 font-bold uppercase tracking-widest mt-1">Ordering</p></div>
+                                        <div><h2 className="text-xl font-black leading-none">โต๊ะ {activeTable}</h2><p className="text-[10px] opacity-60 font-bold mt-1 uppercase tracking-widest">Ordering</p></div>
                                     </div>
-                                    <div className="text-right"><p className="text-[10px] opacity-60 font-bold">ยอดรวม</p><p className="text-3xl font-black">฿{getTableTotal(activeTable)}</p></div>
+                                    <div className="text-right"><p className="text-3xl font-black tracking-tight">฿{getTableTotal(activeTable)}</p></div>
                                 </div>
 
-                                <div className="flex gap-2 overflow-x-auto pb-4 no-scrollbar -mx-4 px-4 sticky top-[73px] bg-[#FDFCFB]/80 backdrop-blur-md z-30">
+                                <div className="flex gap-2 overflow-x-auto pb-4 no-scrollbar -mx-4 px-4 sticky top-[75px] bg-[#FDFCFB]/90 backdrop-blur-md z-30">
                                     {categories.map(cat => (
-                                        <button key={cat} onClick={() => setActiveCategory(cat)} className={`px-5 py-2.5 rounded-full font-bold text-sm whitespace-nowrap transition-all ${activeCategory === cat ? 'bg-red-700 text-white shadow-lg shadow-red-100' : 'bg-white text-slate-400 border border-slate-100'}`}>{getCategoryLabel(cat)}</button>
+                                        <button key={cat} onClick={() => setActiveCategory(cat)} className={`px-5 py-2.5 rounded-full font-bold text-sm whitespace-nowrap transition-all ${activeCategory === cat ? 'bg-red-700 text-white shadow-lg' : 'bg-white text-slate-400 border border-slate-100 active-scale'}`}>{getCategoryLabel(cat)}</button>
                                     ))}
                                 </div>
 
-                                <div className="space-y-6 pb-24">
+                                <div className="space-y-8 mt-4">
                                     {Object.entries(MENU).filter(([key]) => activeCategory === 'all' || activeCategory === key).map(([key, items]) => (
-                                        <div key={key} className="animate-in">
-                                            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2"><span className="w-4 h-[1px] bg-slate-200"></span> {getCategoryLabel(key)}</h3>
+                                        <div key={key}>
+                                            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em] mb-3 flex items-center gap-2"><span className="w-4 h-[1px] bg-slate-200"></span> {getCategoryLabel(key)}</h3>
                                             <div className="grid gap-3">
                                                 {items.map(item => (
-                                                    <div key={item.id} onClick={() => addItem(item)} className="bg-white p-4 rounded-3xl flex justify-between items-center border border-slate-100 shadow-sm active-scale transition-all">
-                                                        <div><h4 className="font-bold text-slate-800 text-lg leading-tight">{item.name}</h4><div className="flex items-center gap-2 mt-1"><span className="text-red-600 font-black text-lg">฿{item.price}</span>{item.isSpecial && <span className="text-[9px] bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full font-black uppercase">แนะนำ</span>}</div></div>
-                                                        <div className="w-10 h-10 bg-slate-50 text-red-600 rounded-2xl flex items-center justify-center"><Plus size={20} strokeWidth={3} /></div>
+                                                    <div key={item.id} onClick={() => addItem(item)} className="bg-white p-4 rounded-3xl flex justify-between items-center border border-slate-100 shadow-sm active-scale">
+                                                        <div className="flex-1">
+                                                            <h4 className="font-bold text-slate-800 text-lg leading-tight">{item.name}</h4>
+                                                            <div className="flex items-center gap-2 mt-1">
+                                                                <span className="text-red-600 font-black text-lg">฿{item.price}</span>
+                                                                {item.isSpecial && <span className="text-[9px] bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full font-black uppercase">แนะนำ</span>}
+                                                            </div>
+                                                        </div>
+                                                        <div className="w-11 h-11 bg-slate-50 text-red-600 rounded-2xl flex items-center justify-center"><Icon name="Plus" size={24} strokeWidth={3} /></div>
                                                     </div>
                                                 ))}
                                             </div>
@@ -209,101 +260,118 @@
                                     ))}
                                 </div>
 
+                                {/* Floating Footer (Cart Summary) */}
                                 <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-xl border-t z-40">
                                     <div className="max-w-md mx-auto flex gap-3">
-                                        <button onClick={() => { if(confirm('ล้างรายการ?')) confirmAndReset(); }} className="p-5 bg-slate-50 text-slate-300 rounded-3xl"><Trash2 size={24} /></button>
-                                        <button onClick={() => { setBillData({ tableId: activeTable, items: tables[activeTable], total: getTableTotal(activeTable), date: new Date().toLocaleString('th-TH') }); setView('checkout'); }} disabled={getTableTotal(activeTable) === 0} className="flex-1 py-5 bg-red-700 text-white rounded-[2rem] font-black text-xl shadow-xl shadow-red-100 active-scale disabled:bg-slate-200">ออกบิล / คิดเงิน</button>
+                                        <button onClick={() => { if(confirm('ล้างออเดอร์ทั้งหมด?')) confirmAndReset(); }} className="p-5 bg-slate-50 text-slate-300 rounded-3xl active-scale"><Icon name="Trash2" size={24} /></button>
+                                        <button onClick={handleCheckout} disabled={getTableTotal(activeTable) === 0} 
+                                            className="flex-1 py-5 bg-red-700 text-white rounded-[2rem] font-black text-xl shadow-xl shadow-red-100 disabled:bg-slate-200 active-scale">สรุปยอด / คิดเงิน</button>
                                     </div>
                                 </div>
                             </div>
                         )}
 
+                        {/* 3. CHECKOUT / RECEIPT */}
                         {view === 'checkout' && billData && (
-                            <div className="animate-in pb-20">
+                            <div className="animate-in pb-24">
                                 <div className="flex items-center gap-4 mb-6">
-                                    <button onClick={() => setView('order-entry')} className="p-3 bg-white border rounded-2xl text-slate-400"><ChevronLeft size={24} /></button>
+                                    <button onClick={() => setView('order-entry')} className="p-3 bg-white border border-slate-100 rounded-2xl text-slate-400 active-scale"><Icon name="ChevronLeft" size={24} /></button>
                                     <h2 className="text-2xl font-black">คิดเงิน โต๊ะ {billData.tableId}</h2>
                                 </div>
 
                                 <div className="flex gap-2 mb-6">
-                                    <button onClick={() => setPaymentMethod('cash')} className={`flex-1 py-4 rounded-2xl font-black flex items-center justify-center gap-2 ${paymentMethod === 'cash' ? 'bg-red-700 text-white shadow-lg' : 'bg-white text-slate-400 border'}`}><Banknote size={20} /> เงินสด</button>
-                                    <button onClick={() => setPaymentMethod('transfer')} className={`flex-1 py-4 rounded-2xl font-black flex items-center justify-center gap-2 ${paymentMethod === 'transfer' ? 'bg-blue-600 text-white shadow-lg' : 'bg-white text-slate-400 border'}`}><CreditCard size={20} /> โอนเงิน</button>
+                                    <button onClick={() => setPaymentMethod('cash')} className={`flex-1 py-4 rounded-2xl font-black flex items-center justify-center gap-2 transition-all ${paymentMethod === 'cash' ? 'bg-red-700 text-white shadow-lg' : 'bg-white text-slate-400 border border-slate-100'}`}><Icon name="Banknote" size={20} /> เงินสด</button>
+                                    <button onClick={() => setPaymentMethod('transfer')} className={`flex-1 py-4 rounded-2xl font-black flex items-center justify-center gap-2 transition-all ${paymentMethod === 'transfer' ? 'bg-blue-600 text-white shadow-lg' : 'bg-white text-slate-400 border border-slate-100'}`}><Icon name="CreditCard" size={20} /> โอนเงิน</button>
                                 </div>
 
                                 {paymentMethod === 'transfer' && (
-                                    <div className="bg-white p-6 rounded-[2.5rem] border text-center mb-6 animate-in">
-                                        <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(generateBankQRData('3897208520', billData.total))}`} className="w-48 h-48 mx-auto mb-4 rounded-lg" />
-                                        <p className="font-black text-blue-600 text-xl">ธนาคารกรุงเทพ 389-7-20852-0</p>
+                                    <div className="bg-white p-6 rounded-[2.5rem] border border-slate-100 text-center mb-6 animate-in">
+                                        <div className="mb-4"><span className="text-[10px] font-black text-blue-600 bg-blue-50 px-4 py-1.5 rounded-full uppercase">ยอดโอน: ฿{billData.total}</span></div>
+                                        <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(generateBankQRData('3897208520', billData.total))}`} className="w-44 h-44 mx-auto mb-4 rounded-lg shadow-sm" />
+                                        <p className="font-black text-slate-800 text-lg">ธนาคารกรุงเทพ</p>
+                                        <p className="font-black text-blue-600 text-2xl tracking-tighter">389-7-20852-0</p>
                                     </div>
                                 )}
 
-                                <div ref={receiptRef} className="bg-white p-8 shadow-2xl border-t-8 border-red-700 rounded-b-lg mb-8">
-                                    <div className="text-center mb-6">
-                                        <h3 className="text-4xl font-black text-red-700 mb-1">แม่บุญส่ง</h3>
-                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.3em]">Thai Noodle Specialist</p>
-                                        <div className="bg-slate-900 text-white px-6 py-1 rounded-full text-[10px] font-black mt-4 inline-block uppercase">Table {billData.tableId}</div>
+                                {/* Premium Receipt UI */}
+                                <div ref={receiptRef} className="bg-white p-8 shadow-2xl border-t-8 border-red-700 rounded-b-lg mb-8 relative">
+                                    <div className="text-center mb-8">
+                                        <h3 className="text-4xl font-black text-red-700 mb-1 tracking-tighter">แม่บุญส่ง</h3>
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-[0.3em]">Thai Noodle Specialist</p>
+                                        <div className="w-12 h-0.5 bg-slate-100 mx-auto my-4"></div>
+                                        <div className="bg-slate-900 text-white px-6 py-1 rounded-full text-[10px] font-black inline-block uppercase tracking-widest">Table {billData.tableId}</div>
                                     </div>
+
                                     <div className="space-y-4 mb-8 border-t border-dashed pt-6">
                                         {billData.items.map((item, i) => (
-                                            <div key={i} className="flex justify-between items-start">
+                                            <div key={i} className="flex justify-between items-start text-sm">
                                                 <div className="flex-1 pr-4">
-                                                    <p className="font-bold text-slate-800">{item.name}</p>
-                                                    {item.details && <p className="text-[9px] text-red-500 font-bold">{item.details.join(', ')}</p>}
-                                                    <p className="text-[10px] text-slate-400 font-bold">฿{item.price} x {item.quantity}</p>
+                                                    <p className="font-bold text-slate-800 leading-tight">{item.name}</p>
+                                                    {item.details && <p className="text-[9px] text-red-500 font-bold mt-0.5">{item.details.join(', ')}</p>}
+                                                    <p className="text-[10px] text-slate-400 font-bold mt-1">฿{item.price} x {item.quantity}</p>
                                                 </div>
-                                                <span className="font-black">฿{item.price * item.quantity}</span>
+                                                <span className="font-black text-slate-900">฿{item.price * item.quantity}</span>
                                             </div>
                                         ))}
                                     </div>
+
                                     <div className="bg-slate-900 text-white p-6 rounded-3xl flex justify-between items-center shadow-xl">
-                                        <span className="text-xs font-black opacity-60 uppercase">ยอดรวม</span>
+                                        <span className="text-xs font-black opacity-50 uppercase tracking-widest">ยอดรวม</span>
                                         <span className="text-4xl font-black underline decoration-red-500 decoration-4 underline-offset-4">฿{billData.total}</span>
                                     </div>
-                                    <div className="mt-8 text-center text-[10px] text-slate-300 font-bold uppercase tracking-widest">{billData.date}</div>
-                                    <div className="mt-4 flex items-center justify-center gap-2 text-red-500 font-black italic"><Heart size={14} fill="currentColor" /> ขอบคุณที่มาอุดหนุนครับ <Heart size={14} fill="currentColor" /></div>
+                                    
+                                    <div className="mt-10 text-center border-t border-slate-50 pt-6">
+                                        <p className="text-[9px] font-bold text-slate-300 mb-4 tracking-widest uppercase">{billData.date}</p>
+                                        <div className="flex items-center justify-center gap-2 text-red-500 font-black italic text-lg mb-2">
+                                            <Heart size={16} fill="currentColor" /> ขอบคุณที่มาอุดหนุนครับ <Heart size={16} fill="currentColor" />
+                                        </div>
+                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest opacity-40">Delicious - Cheap - Fresh</p>
+                                    </div>
                                 </div>
 
-                                <button onClick={createBillImage} className="w-full py-5 bg-slate-900 text-white rounded-[2rem] font-black text-lg shadow-xl active-scale flex items-center justify-center gap-3 mb-3"><ImageIcon size={22} /> {isProcessing ? "กำลังบันทึก..." : "1. บันทึกรูปส่งลูกค้า"}</button>
-                                <button onClick={() => setShowPayConfirm(true)} className="w-full py-5 bg-green-600 text-white rounded-[2rem] font-black text-2xl shadow-xl active-scale">2. จ่ายเงินแล้ว</button>
+                                <div className="space-y-3">
+                                    <button onClick={createBillImage} disabled={isProcessing} className="w-full py-5 bg-slate-900 text-white rounded-[2rem] font-black text-lg shadow-xl flex items-center justify-center gap-3 active-scale transition-all"><Icon name="ImageIcon" size={22} /> {isProcessing ? "กำลังบันทึก..." : "1. บันทึกรูปส่งลูกค้า"}</button>
+                                    <button onClick={() => setShowPayConfirm(true)} className="w-full py-5 bg-green-600 text-white rounded-[2rem] font-black text-2xl shadow-xl active-scale">2. จ่ายเงินแล้ว</button>
+                                </div>
                             </div>
                         )}
                     </main>
 
-                    {/* Modals */}
+                    {/* --- MODALS & OVERLAYS --- */}
+                    
+                    {/* Image Preview Modal */}
                     {generatedImg && (
                         <div className="fixed inset-0 bg-slate-900/95 z-[100] flex flex-col items-center justify-center p-6 animate-in">
-                            <img src={generatedImg} className="max-h-[70vh] rounded-2xl shadow-2xl border-4 border-white" />
-                            <p className="text-white font-bold mt-6 mb-8 italic">"กดค้างที่รูป" เพื่อบันทึกรูปครับ</p>
+                            <div className="bg-white p-2 rounded-3xl shadow-2xl mb-8"><img src={generatedImg} className="max-h-[70vh] rounded-2xl" /></div>
+                            <p className="text-white font-bold mb-8 italic text-sm">"กดค้างที่รูป" เพื่อบันทึกลงเครื่องครับ</p>
                             <button onClick={() => setGeneratedImg(null)} className="w-full max-w-xs py-5 bg-red-600 text-white rounded-full font-black text-xl shadow-xl active-scale">ปิดหน้าต่าง</button>
                         </div>
                     )}
 
+                    {/* Pay Confirm Modal */}
                     {showPayConfirm && (
                         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[100] flex items-center justify-center p-6 animate-in">
-                            <div className="bg-white w-full max-w-sm rounded-[3rem] p-10 text-center shadow-2xl">
-                                <div className="w-20 h-20 bg-green-50 text-green-500 rounded-full flex items-center justify-center mx-auto mb-6"><CheckCircle2 size={48} /></div>
-                                <h3 className="text-2xl font-black mb-2">รับเงินเรียบร้อย?</h3>
+                            <div className="bg-white w-full max-w-sm rounded-[3rem] p-10 text-center shadow-2xl border-t-8 border-green-500">
+                                <div className="w-20 h-20 bg-green-50 text-green-500 rounded-full flex items-center justify-center mx-auto mb-6 shadow-inner"><Icon name="CheckCircle2" size={48} /></div>
+                                <h3 className="text-2xl font-black text-slate-900 mb-2 tracking-tight">รับเงินเรียบร้อย?</h3>
                                 <p className="text-slate-400 text-sm font-bold mb-8 italic">ยืนยันเพื่อล้างออเดอร์โต๊ะ {activeTable}</p>
-                                <button onClick={confirmAndReset} className="w-full py-5 bg-green-600 text-white rounded-3xl font-black text-xl shadow-lg active-scale mb-4">ตกลง และรีเซ็ตโต๊ะ</button>
-                                <button onClick={() => setShowPayConfirm(false)} className="text-slate-400 font-bold uppercase text-xs tracking-widest">ยกเลิก</button>
+                                <button onClick={confirmAndReset} className="w-full py-5 bg-green-600 text-white rounded-[3xl] font-black text-xl shadow-lg active-scale mb-4">ตกลง และรีเซ็ตโต๊ะ</button>
+                                <button onClick={() => setShowPayConfirm(false)} className="text-slate-400 font-bold uppercase text-[10px] tracking-[0.2em] active:text-slate-600">ยกเลิก</button>
                             </div>
                         </div>
                     )}
 
+                    {/* Special Menu (4 Girls) Modal */}
                     {fourGirlsModal && (
                         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[100] flex items-center justify-center p-4">
                             <div className="bg-white w-full max-w-sm rounded-[3rem] shadow-2xl overflow-hidden border-t-8 border-red-700 animate-in">
-                                <div className="p-8 text-center border-b"><h2 className="text-2xl font-black">เลือกน้ำยา 4 อย่าง</h2><p className="text-[10px] text-red-600 font-black mt-1 uppercase">ชุดสี่สาว 140 บาท</p></div>
+                                <div className="p-8 text-center border-b border-slate-50"><h2 className="text-2xl font-black text-slate-900">เลือกน้ำยา 4 อย่าง</h2><p className="text-[10px] text-red-600 font-black mt-1 uppercase tracking-widest">ชุดสี่สาว 140 บาท</p></div>
                                 <div className="p-8">
-                                    <div className="flex gap-2 mb-8 justify-center">
-                                        {[0,1,2,3].map(i => <div key={i} className={`w-12 h-12 rounded-xl border-2 flex items-center justify-center font-black text-[10px] ${tempCurries[i] ? 'bg-red-50 border-red-500 text-red-700' : 'border-dashed border-slate-200 text-slate-300'}`}>{tempCurries[i] || i+1}</div>)}
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-2 mb-8">
-                                        {CURRY_OPTIONS.map(c => <button key={c} onClick={() => tempCurries.length < 4 && setTempCurries([...tempCurries, c])} className={`p-4 rounded-2xl border-2 text-xs font-black transition-all ${tempCurries.length >= 4 ? 'opacity-30' : 'bg-white active:bg-red-50 active:border-red-500 text-slate-600'}`}>{c}</button>)}
-                                    </div>
+                                    <div className="flex gap-2 mb-8 justify-center">{[0,1,2,3].map(i => <div key={i} className={`w-12 h-12 rounded-2xl border-2 flex items-center justify-center font-black text-[10px] transition-all ${tempCurries[i] ? 'bg-red-50 border-red-500 text-red-700 scale-110 shadow-md' : 'border-dashed border-slate-200 text-slate-300'}`}>{tempCurries[i] || i+1}</div>)}</div>
+                                    <div className="grid grid-cols-2 gap-2 mb-8">{CURRY_OPTIONS.map(c => <button key={c} onClick={() => tempCurries.length < 4 && setTempCurries([...tempCurries, c])} className={`p-4 rounded-2xl border-2 text-xs font-black transition-all ${tempCurries.length >= 4 ? 'opacity-30' : 'bg-white border-slate-100 text-slate-600 active:bg-red-50 active:border-red-500'}`}>{c}</button>)}</div>
                                     <div className="flex gap-3">
-                                        <button onClick={() => setTempCurries(tempCurries.slice(0, -1))} className="flex-1 py-4 bg-slate-100 rounded-2xl font-bold">ลบ</button>
-                                        <button disabled={tempCurries.length < 4} onClick={() => { addItem(MENU.special.find(i => i.id === 'kjo_4girls'), tempCurries); setFourGirlsModal(false); }} className="flex-[2] py-4 bg-red-700 text-white rounded-2xl font-black disabled:bg-slate-200 shadow-lg">เพิ่มลงโต๊ะ</button>
+                                        <button onClick={() => setTempCurries(tempCurries.slice(0, -1))} className="flex-1 py-4 bg-slate-100 rounded-2xl font-bold active-scale">ลบ</button>
+                                        <button disabled={tempCurries.length < 4} onClick={() => { addItem(MENU.special.find(i => i.id === 'kjo_4girls'), tempCurries); setFourGirlsModal(false); }} className={`flex-[2] py-4 rounded-2xl font-black text-lg shadow-lg transition-all ${tempCurries.length < 4 ? 'bg-slate-200 text-slate-400' : 'bg-red-700 text-white active-scale'}`}>เพิ่มลงโต๊ะ</button>
                                     </div>
                                 </div>
                             </div>
@@ -313,8 +381,18 @@
             );
         };
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
+        // --- 4. ERROR HANDLING & MOUNT ---
+        try {
+            const root = ReactDOM.createRoot(document.getElementById('root'));
+            root.render(<App />);
+            console.log("POS System started successfully");
+        } catch (e) {
+            console.error("Mount failed:", e);
+            document.getElementById('loader-icon').classList.add('hidden');
+            document.getElementById('status-text').classList.add('hidden');
+            document.getElementById('error-display').classList.remove('hidden');
+            document.getElementById('error-message').textContent = e.toString();
+        }
     </script>
 </body>
 </html>
