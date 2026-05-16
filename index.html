@@ -3,19 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>แม่บุญส่ง POS - Ultra Stable</title>
+    <title>แม่บุญส่ง POS - Premium Version</title>
     
-    <!-- 1. Load CSS & Fonts first -->
-    <link href="https://fonts.googleapis.com/css2?family=Anuphan:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <!-- Dependencies -->
+    <link href="https://fonts.googleapis.com/css2?family=Anuphan:wght@400;600;700;800&family=Chakra+Petch:wght@400;700&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Lucide Core (More Stable) -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     
     <style>
-        body { font-family: 'Anuphan', sans-serif; -webkit-tap-highlight-color: transparent; background-color: #FDFCFB; color: #1e293b; margin: 0; }
+        body { font-family: 'Anuphan', sans-serif; -webkit-tap-highlight-color: transparent; background-color: #f8fafc; color: #1e293b; margin: 0; }
+        .receipt-font { font-family: 'Chakra Petch', sans-serif; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
-        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .animate-in { animation: fadeIn 0.3s ease-out forwards; }
         .active-scale:active { transform: scale(0.96); transition: transform 0.1s; }
+        
+        /* Receipt Styles */
+        .receipt-container { background: white; padding: 40px 24px; box-shadow: 0 20px 50px -10px rgba(0,0,0,0.1); position: relative; width: 100%; max-width: 360px; margin: 0 auto; border-top: 10px solid #b91c1c; }
+        .receipt-zigzag { position: absolute; bottom: -12px; left: 0; width: 100%; height: 12px; background: linear-gradient(-135deg, white 6px, transparent 0), linear-gradient(135deg, white 6px, transparent 0); background-size: 12px 12px; }
+        .dashed-line { border-top: 2px dashed #cbd5e1; margin: 16px 0; }
+        
         #app-loading { display: flex; align-items: center; justify-content: center; height: 100vh; flex-direction: column; gap: 1rem; color: #b91c1c; font-weight: 800; }
         .spinner { width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid #b91c1c; border-radius: 50%; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
@@ -25,27 +38,25 @@
     <div id="root">
         <div id="app-loading">
             <div class="spinner"></div>
-            <p>กำลังโหลดระบบ POS...</p>
+            <p>กำลังเตรียมระบบ POS...</p>
         </div>
     </div>
 
-    <!-- 2. Load JS Libraries sequentially -->
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="https://unpkg.com/lucide-react@latest"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-
     <script type="text/babel">
-        // --- SAFE ICON COMPONENT ---
+        const { useState, useEffect, useRef } = React;
+
+        // --- ULTRA STABLE ICON SYSTEM ---
         const Icon = ({ name, size = 24, className = "" }) => {
-            try {
-                const LucideIcon = window.LucideReact[name] || window.LucideReact.HelpCircle;
-                return <LucideIcon size={size} className={className} strokeWidth={2.5} />;
-            } catch (e) {
-                return <span style={{display: 'inline-block', width: size, height: size}}></span>;
-            }
+            const [svg, setSvg] = useState('');
+            useEffect(() => {
+                if (window.lucide) {
+                    const icon = window.lucide.icons[name] || window.lucide.icons['HelpCircle'];
+                    if (icon) {
+                        setSvg(icon.toSvg({ width: size, height: size, class: className, 'stroke-width': 2.5 }));
+                    }
+                }
+            }, [name, size, className]);
+            return <span dangerouslySetInnerHTML={{ __html: svg }} style={{ display: 'inline-flex', verticalAlign: 'middle' }} />;
         };
 
         const MENU = {
@@ -58,13 +69,6 @@
             somTum: [
                 { id: 'st_thai', name: 'ตำไทย', price: 50, category: 'ส้มตำ' },
                 { id: 'st_plara', name: 'ตำปลาร้า', price: 50, category: 'ส้มตำ' },
-                { id: 'st_tang', name: 'ตำแตง', price: 60, category: 'ส้มตำ' },
-            ],
-            special: [
-                { id: 'kjo_4girls', name: 'ขนมจีน ชุดสี่สาว', price: 140, category: 'เมนูแนะนำ', isSpecial: true },
-                { id: 'sp1', name: 'ห่อหมกปลาช่อน', price: 40, category: 'เครื่องเคียง' },
-                { id: 'sp_chicken', name: 'ไก่ทอด', price: 10, category: 'เครื่องเคียง' },
-                { id: 'sp_egg', name: 'ไข่ต้ม', price: 10, category: 'เครื่องเคียง' },
             ],
             drinks: [
                 { id: 'ds_lodchong', name: 'ลอดช่อง', price: 50, category: 'ขนม/น้ำ' },
@@ -73,64 +77,35 @@
             ]
         };
 
-        const CURRY_OPTIONS = ['น้ำยากะทิ', 'น้ำยาป่า', 'แกงเขียวหวาน', 'น้ำเงี้ยว', 'น้ำพริก', 'แกงไตปลา'];
-
-        const generateBankQRData = (accountNo, amount) => {
-            const formatID = (id, value) => id + value.length.toString().padStart(2, '0') + value;
-            const target = accountNo.replace(/[^0-9]/g, '');
-            let payload = '000201010212' + formatID('29', formatID('00', 'A000000677010111') + formatID('01', target.padStart(13, '0'))) + '5303764'; 
-            if (amount > 0) payload += formatID('54', parseFloat(amount).toFixed(2)); 
-            payload += '5802TH6304'; 
-            const crc16 = (data) => {
-                let crc = 0xFFFF;
-                for (let i = 0; i < data.length; i++) {
-                    let x = ((crc >> 8) ^ data.charCodeAt(i)) & 0xFF;
-                    x ^= x >> 4;
-                    crc = ((crc << 8) ^ (x << 12) ^ (x << 5) ^ x) & 0xFFFF;
-                }
-                return crc.toString(16).toUpperCase().padStart(4, '0');
-            };
-            return payload + crc16(payload);
-        };
-
         const App = () => {
-            const [tables, setTables] = React.useState(() => {
-                const saved = localStorage.getItem('mb_pos_v3');
+            const [tables, setTables] = useState(() => {
+                const saved = localStorage.getItem('mb_pos_premium_v1');
                 return saved ? JSON.parse(saved) : {};
             });
-            const [activeTable, setActiveTable] = React.useState(null);
-            const [view, setView] = React.useState('table-selection');
-            const [activeCategory, setActiveCategory] = React.useState('all');
-            const [billData, setBillData] = React.useState(null);
-            const [paymentMethod, setPaymentMethod] = React.useState('cash');
-            const [generatedImg, setGeneratedImg] = React.useState(null);
-            const [isProcessing, setIsProcessing] = React.useState(false);
-            const [fourGirlsModal, setFourGirlsModal] = React.useState(false);
-            const [tempCurries, setTempCurries] = React.useState([]);
-            const [showPayConfirm, setShowPayConfirm] = React.useState(false);
-            
-            // Custom Item State
-            const [customName, setCustomName] = React.useState('');
-            const [customPrice, setCustomPrice] = React.useState('');
-            const [showCustomForm, setShowCustomForm] = React.useState(false);
+            const [activeTable, setActiveTable] = useState(null);
+            const [view, setView] = useState('table-selection');
+            const [billData, setBillData] = useState(null);
+            const [generatedImg, setGeneratedImg] = useState(null);
+            const [isProcessing, setIsProcessing] = useState(false);
+            const [showPayConfirm, setShowPayConfirm] = useState(false);
+            const [customName, setCustomName] = useState('');
+            const [customPrice, setCustomPrice] = useState('');
+            const [showCustomForm, setShowCustomForm] = useState(false);
 
-            const receiptRef = React.useRef(null);
+            const receiptRef = useRef(null);
 
-            React.useEffect(() => {
-                localStorage.setItem('mb_pos_v3', JSON.stringify(tables));
+            useEffect(() => {
+                localStorage.setItem('mb_pos_premium_v1', JSON.stringify(tables));
             }, [tables]);
 
             const getTableTotal = (num) => (tables[num] || []).reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
-            const addItem = (item, details = null) => {
-                if (item.id === 'kjo_4girls' && !details) { setTempCurries([]); setFourGirlsModal(true); return; }
+            const addItem = (item) => {
                 setTables(prev => {
                     const list = prev[activeTable] || [];
-                    const id = details ? `${item.id}-${details.join('-')}` : item.id;
-                    const idx = list.findIndex(i => i.entryId === id);
-                    let newList;
-                    if (idx > -1) { newList = [...list]; newList[idx].quantity += 1; }
-                    else { newList = [...list, { ...item, entryId: id, details, quantity: 1 }]; }
+                    const idx = list.findIndex(i => i.id === item.id);
+                    let newList = idx > -1 ? [...list] : [...list, { ...item, quantity: 1 }];
+                    if (idx > -1) newList[idx].quantity += 1;
                     return { ...prev, [activeTable]: newList };
                 });
             };
@@ -144,78 +119,80 @@
             const removeItem = (id) => {
                 setTables(prev => {
                     const list = prev[activeTable] || [];
-                    const idx = list.findIndex(i => i.entryId === id);
+                    const idx = list.findIndex(i => i.id === id);
                     if (idx === -1) return prev;
-                    const next = [...list];
+                    let next = [...list];
                     if (next[idx].quantity > 1) { next[idx].quantity -= 1; return { ...prev, [activeTable]: next }; }
-                    return { ...prev, [activeTable]: list.filter(i => i.entryId !== id) };
+                    return { ...prev, [activeTable]: list.filter(i => i.id !== id) };
                 });
             };
 
-            const confirmAndReset = () => {
-                const current = activeTable;
-                setTables(prev => { const n = { ...prev }; delete n[current]; return n; });
-                setBillData(null); setView('table-selection'); setShowPayConfirm(false); setActiveTable(null);
+            const saveReceiptImage = async () => {
+                if (!receiptRef.current) return;
+                setIsProcessing(true);
+                try {
+                    const canvas = await html2canvas(receiptRef.current, { scale: 3, backgroundColor: '#ffffff' });
+                    setGeneratedImg(canvas.toDataURL("image/png"));
+                } catch (e) { alert("เกิดข้อผิดพลาดในการบันทึก"); } finally { setIsProcessing(false); }
             };
 
             return (
-                <div className="min-h-screen max-w-lg mx-auto">
+                <div className="min-h-screen max-w-md mx-auto">
                     {/* Header */}
-                    <header className="bg-white border-b p-4 sticky top-0 z-50 flex justify-between items-center shadow-sm">
-                        <div onClick={() => { setView('table-selection'); setActiveTable(null); }} className="cursor-pointer">
-                            <h1 className="text-xl font-black text-red-700 flex items-center gap-2">แม่บุญส่ง <span className="text-[10px] bg-red-100 px-2 py-0.5 rounded-full font-bold">POS</span></h1>
+                    <header className="bg-white border-b border-slate-100 p-4 sticky top-0 z-50 flex justify-between items-center shadow-sm">
+                        <div onClick={() => { setView('table-selection'); setActiveTable(null); }} className="cursor-pointer active-scale">
+                            <h1 className="text-xl font-black text-red-700 flex items-center gap-2">
+                                <Icon name="Utensils" size={20} className="text-red-600" /> แม่บุญส่ง <span className="text-[10px] bg-red-100 px-2 py-0.5 rounded-full uppercase font-bold tracking-tighter">POS</span>
+                            </h1>
                         </div>
-                        {view !== 'table-selection' && <button onClick={() => setView('table-selection')} className="p-2 bg-slate-50 rounded-xl text-slate-500"><Icon name="LayoutGrid" size={22} /></button>}
+                        {view !== 'table-selection' && (
+                            <button onClick={() => setView('table-selection')} className="p-2.5 bg-slate-50 rounded-2xl text-slate-400 active-scale"><Icon name="LayoutGrid" size={22} /></button>
+                        )}
                     </header>
 
                     <main className="p-4">
-                        {/* 1. TABLE Selection */}
-                        {view === 'table-selection' && (
-                            <div className="animate-in grid grid-cols-3 gap-4 pt-4">
-                                {[1,2,3,4,5,6,7,8,9].map(num => (
-                                    <button key={num} onClick={() => { setActiveTable(num); setView('order-entry'); }} 
-                                        className={`aspect-square rounded-[2rem] bg-white border flex flex-col items-center justify-center shadow-sm active-scale ${getTableTotal(num) > 0 ? 'border-red-500 ring-4 ring-red-50 shadow-lg' : 'border-slate-100'}`}>
-                                        <span className={`text-4xl font-black ${getTableTotal(num) > 0 ? 'text-red-700' : 'text-slate-200'}`}>{num}</span>
-                                        {getTableTotal(num) > 0 && <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full mt-1 font-bold">฿{getTableTotal(num)}</span>}
-                                    </button>
-                                ))}
+                        {view === 'table-selection' ? (
+                            <div className="animate-in pt-2">
+                                <h2 className="text-xl font-black mb-6 flex items-center gap-2 text-slate-800"><Icon name="Users" size={20} className="text-red-600" /> เลือกโต๊ะลูกค้า</h2>
+                                <div className="grid grid-cols-3 gap-4">
+                                    {[1,2,3,4,5,6,7,8,9].map(num => (
+                                        <button key={num} onClick={() => { setActiveTable(num); setView('order-entry'); }} 
+                                            className={`aspect-square rounded-[2rem] bg-white border flex flex-col items-center justify-center shadow-sm transition-all active-scale ${getTableTotal(num) > 0 ? 'border-red-500 ring-4 ring-red-50 shadow-lg' : 'border-slate-100'}`}>
+                                            <span className={`text-4xl font-black ${getTableTotal(num) > 0 ? 'text-red-700' : 'text-slate-200'}`}>{num}</span>
+                                            {getTableTotal(num) > 0 && <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full mt-1 font-bold">฿{getTableTotal(num)}</span>}
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
-                        )}
-
-                        {/* 2. ORDER Entry */}
-                        {view === 'order-entry' && (
+                        ) : view === 'order-entry' ? (
                             <div className="animate-in pb-32">
                                 <div className="bg-red-700 text-white p-6 rounded-[2.5rem] flex justify-between items-center mb-6 shadow-xl">
-                                    <div className="flex items-center gap-4">
-                                        <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center font-black text-2xl">{activeTable}</div>
-                                        <h2 className="text-xl font-black">โต๊ะ {activeTable}</h2>
-                                    </div>
+                                    <div className="flex items-center gap-4"><div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center font-black text-2xl">{activeTable}</div><h2 className="text-xl font-black tracking-tight">โต๊ะ {activeTable}</h2></div>
                                     <p className="text-3xl font-black">฿{getTableTotal(activeTable)}</p>
                                 </div>
 
-                                {/* Custom Form */}
-                                <div className="mb-6">
-                                    <button onClick={() => setShowCustomForm(!showCustomForm)} className="w-full p-4 bg-indigo-50 border border-indigo-100 rounded-2xl text-indigo-700 font-bold flex items-center justify-center gap-2 active-scale text-sm">
-                                        <Icon name="PlusCircle" size={18} /> {showCustomForm ? 'ปิดแบบฟอร์ม' : 'เพิ่มรายการพิเศษ/ราคาเอง'}
+                                <div className="mb-6 bg-white p-4 rounded-3xl border border-indigo-100 shadow-sm">
+                                    <button onClick={() => setShowCustomForm(!showCustomForm)} className="w-full flex items-center justify-center gap-2 font-bold text-indigo-600 active-scale py-1">
+                                        <Icon name="PlusCircle" size={18} /> {showCustomForm ? 'ยกเลิกรายการพิเศษ' : 'เพิ่มรายการอื่น / ระบุราคาเอง'}
                                     </button>
                                     {showCustomForm && (
-                                        <div className="mt-4 p-4 bg-white border rounded-2xl shadow-sm space-y-3 animate-in">
-                                            <input type="text" placeholder="ชื่อรายการ..." value={customName} onChange={e => setCustomName(e.target.value)} className="w-full p-3 bg-slate-50 rounded-xl outline-none font-bold" />
+                                        <div className="mt-4 space-y-3 animate-in">
+                                            <input type="text" placeholder="ชื่อสินค้า..." value={customName} onChange={e => setCustomName(e.target.value)} className="w-full p-3 bg-slate-50 rounded-xl outline-none font-bold" />
                                             <input type="number" placeholder="ราคา..." value={customPrice} onChange={e => setCustomPrice(e.target.value)} className="w-full p-3 bg-slate-50 rounded-xl outline-none font-black text-red-600" />
-                                            <button onClick={addCustom} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-black active-scale shadow-lg shadow-indigo-100">บันทึก</button>
+                                            <button onClick={addCustom} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-black active-scale shadow-lg">บันทึกลงโต๊ะ {activeTable}</button>
                                         </div>
                                     )}
                                 </div>
 
-                                <div className="space-y-6">
+                                <div className="space-y-8">
                                     {Object.entries(MENU).map(([key, items]) => (
                                         <div key={key}>
-                                            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 border-l-2 border-red-500 pl-2">{items[0].category}</h3>
+                                            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 border-l-4 border-red-500 pl-3">{items[0].category}</h3>
                                             <div className="grid gap-3">
                                                 {items.map(item => (
-                                                    <div key={item.id} onClick={() => addItem(item)} className="bg-white p-4 rounded-3xl flex justify-between items-center border shadow-sm active-scale">
-                                                        <div><h4 className="font-bold text-slate-800">{item.name}</h4><p className="text-red-600 font-black">฿{item.price}</p></div>
-                                                        <div className="w-10 h-10 bg-slate-50 text-red-600 rounded-2xl flex items-center justify-center"><Icon name="Plus" size={20} /></div>
+                                                    <div key={item.id} onClick={() => addItem(item)} className="bg-white p-4 rounded-3xl flex justify-between items-center border border-slate-100 shadow-sm active-scale">
+                                                        <div><h4 className="font-bold text-slate-800 text-lg">{item.name}</h4><p className="text-red-600 font-black">฿{item.price}</p></div>
+                                                        <div className="w-11 h-11 bg-slate-50 text-red-600 rounded-2xl flex items-center justify-center shadow-inner"><Icon name="Plus" size={24} /></div>
                                                     </div>
                                                 ))}
                                             </div>
@@ -223,21 +200,17 @@
                                     ))}
                                 </div>
 
-                                {/* Summary List */}
                                 {(tables[activeTable] || []).length > 0 && (
-                                    <div className="mt-10 p-4 bg-white rounded-3xl border border-slate-100">
-                                        <h3 className="font-black text-sm mb-4 flex items-center gap-2"><Icon name="ClipboardList" size={18} /> รายการปัจจุบัน</h3>
+                                    <div className="mt-10 bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
+                                        <h3 className="font-black text-sm mb-4 flex items-center gap-2"><Icon name="ClipboardList" size={18} /> รายการสั่งปัจจุบัน</h3>
                                         <div className="divide-y divide-slate-50">
                                             {tables[activeTable].map(item => (
-                                                <div key={item.entryId} className="py-3 flex justify-between items-center">
-                                                    <div className="flex-1 pr-4">
-                                                        <p className="font-bold text-sm">{item.name}</p>
-                                                        {item.details && <p className="text-[9px] text-red-500 font-bold">{item.details.join(', ')}</p>}
-                                                    </div>
-                                                    <div className="flex items-center gap-3">
-                                                        <button onClick={() => removeItem(item.entryId)} className="w-8 h-8 bg-slate-50 text-slate-400 rounded-lg flex items-center justify-center"><Icon name="Minus" size={14} /></button>
-                                                        <span className="font-black text-red-600">{item.quantity}</span>
-                                                        <button onClick={() => addItem(item, item.details)} className="w-8 h-8 bg-red-700 text-white rounded-lg flex items-center justify-center"><Icon name="Plus" size={14} /></button>
+                                                <div key={item.id} className="py-4 flex justify-between items-center">
+                                                    <p className="font-bold text-slate-700">{item.name}</p>
+                                                    <div className="flex items-center gap-4 bg-slate-50 p-1 rounded-xl">
+                                                        <button onClick={() => removeItem(item.id)} className="w-8 h-8 bg-white text-slate-400 rounded-lg shadow-sm active-scale flex items-center justify-center"><Icon name="Minus" size={14} /></button>
+                                                        <span className="font-black text-lg min-w-[20px] text-center text-red-600">{item.quantity}</span>
+                                                        <button onClick={() => addItem(item)} className="w-8 h-8 bg-red-700 text-white rounded-lg shadow-sm active-scale flex items-center justify-center"><Icon name="Plus" size={14} /></button>
                                                     </div>
                                                 </div>
                                             ))}
@@ -245,82 +218,90 @@
                                     </div>
                                 )}
 
-                                <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-xl border-t z-40">
+                                <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/90 backdrop-blur-xl border-t z-40">
                                     <div className="max-w-md mx-auto flex gap-3">
-                                        <button onClick={() => { if(confirm('ล้าง?')) confirmAndReset(); }} className="p-5 bg-slate-50 text-slate-300 rounded-3xl"><Icon name="Trash2" size={24} /></button>
-                                        <button onClick={() => { setBillData({ tableId: activeTable, items: tables[activeTable], total: getTableTotal(activeTable), date: new Date().toLocaleString('th-TH') }); setView('checkout'); }} disabled={getTableTotal(activeTable) === 0} className="flex-1 py-5 bg-red-700 text-white rounded-[2rem] font-black text-xl shadow-xl active-scale disabled:bg-slate-200">คิดเงิน</button>
+                                        <button onClick={() => { if(confirm('ต้องการล้างออเดอร์ทั้งหมดหรือไม่?')) { setTables({...tables, [activeTable]: []}); } }} className="p-5 bg-slate-100 text-slate-400 rounded-3xl active-scale"><Icon name="Trash2" size={24} /></button>
+                                        <button onClick={() => { setBillData({ tableId: activeTable, items: tables[activeTable], total: getTableTotal(activeTable), date: new Date().toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' }) }); setView('checkout'); }} disabled={getTableTotal(activeTable) === 0} className="flex-1 py-5 bg-red-700 text-white rounded-[2rem] font-black text-xl shadow-xl active-scale disabled:bg-slate-200 transition-all">สรุปยอด / ออกบิล</button>
                                     </div>
                                 </div>
                             </div>
-                        )}
-
-                        {/* 3. CHECKOUT */}
-                        {view === 'checkout' && billData && (
+                        ) : (
                             <div className="animate-in pb-20">
                                 <div className="flex items-center gap-4 mb-6">
-                                    <button onClick={() => setView('order-entry')} className="p-3 bg-white border rounded-2xl text-slate-400"><Icon name="ChevronLeft" size={24} /></button>
-                                    <h2 className="text-2xl font-black">สรุปยอด โต๊ะ {billData.tableId}</h2>
+                                    <button onClick={() => setView('order-entry')} className="p-3 bg-white border border-slate-100 rounded-2xl text-slate-400 active-scale shadow-sm"><Icon name="ChevronLeft" size={24} /></button>
+                                    <h2 className="text-2xl font-black tracking-tight">บิล โต๊ะ {billData.tableId}</h2>
                                 </div>
 
-                                <div className="flex gap-2 mb-6">
-                                    <button onClick={() => setPaymentMethod('cash')} className={`flex-1 py-4 rounded-2xl font-black flex items-center justify-center gap-2 ${paymentMethod === 'cash' ? 'bg-red-700 text-white shadow-lg' : 'bg-white text-slate-400 border'}`}><Icon name="Banknote" size={20} /> เงินสด</button>
-                                    <button onClick={() => setPaymentMethod('transfer')} className={`flex-1 py-4 rounded-2xl font-black flex items-center justify-center gap-2 ${paymentMethod === 'transfer' ? 'bg-blue-600 text-white shadow-lg' : 'bg-white text-slate-400 border'}`}><Icon name="CreditCard" size={20} /> โอนเงิน</button>
-                                </div>
-
-                                {paymentMethod === 'transfer' && (
-                                    <div className="bg-white p-6 rounded-[2rem] border text-center mb-6">
-                                        <img src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(generateBankQRData('3897208520', billData.total))}`} className="w-40 h-40 mx-auto mb-4" />
-                                        <p className="font-black text-blue-600 text-lg">ธนาคารกรุงเทพ 389-7-20852-0</p>
+                                {/* Premium Receipt UI */}
+                                <div className="receipt-container mb-10" ref={receiptRef}>
+                                    <div className="text-center">
+                                        <h3 className="text-5xl font-black text-red-700 receipt-font tracking-tighter mb-2">แม่บุญส่ง</h3>
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.3em] mb-4">Delicious Khanom Jeen POS System</p>
+                                        <div className="dashed-line"></div>
+                                        <div className="flex justify-between items-center mb-1 font-bold text-slate-800">
+                                            <span className="text-[12px] bg-slate-900 text-white px-3 py-1 rounded-full uppercase">Table {billData.tableId}</span>
+                                            <span className="text-[10px] text-slate-400">#RECEIPT-{Math.floor(1000 + Math.random() * 9000)}</span>
+                                        </div>
+                                        <p className="text-[10px] font-bold text-slate-300 mb-6 text-left">{billData.date}</p>
                                     </div>
-                                )}
 
-                                <div ref={receiptRef} className="bg-white p-8 shadow-2xl border-t-8 border-red-700 rounded-b-lg mb-8">
-                                    <h3 className="text-center text-4xl font-black text-red-700 mb-6 tracking-tighter">แม่บุญส่ง</h3>
-                                    <div className="space-y-4 mb-8 border-t border-dashed pt-6">
+                                    <div className="receipt-font space-y-4 mb-8">
+                                        <div className="flex justify-between text-[10px] font-black text-slate-300 border-b pb-2 uppercase tracking-widest">
+                                            <span>รายการอาหาร</span>
+                                            <span>รวม (บาท)</span>
+                                        </div>
                                         {billData.items.map((item, i) => (
-                                            <div key={i} className="flex justify-between items-start text-sm">
-                                                <div className="flex-1 pr-4">
-                                                    <p className="font-bold">{item.name}</p>
-                                                    <p className="text-[10px] text-slate-400">฿{item.price} x {item.quantity}</p>
+                                            <div key={i} className="flex justify-between items-start text-[15px]">
+                                                <div className="flex-1 pr-6">
+                                                    <p className="font-bold text-slate-800 leading-tight">{item.name}</p>
+                                                    <p className="text-[10px] text-slate-400 font-bold mt-1 uppercase">฿{item.price} x {item.quantity}</p>
                                                 </div>
-                                                <span className="font-black">฿{item.price * item.quantity}</span>
+                                                <span className="font-black text-slate-900">฿{item.price * item.quantity}</span>
                                             </div>
                                         ))}
                                     </div>
-                                    <div className="bg-slate-900 text-white p-6 rounded-3xl flex justify-between items-center shadow-xl">
-                                        <span className="text-xs font-black opacity-60">ยอดรวม</span>
-                                        <span className="text-4xl font-black underline decoration-red-500 decoration-4 underline-offset-4">฿{billData.total}</span>
+
+                                    <div className="dashed-line"></div>
+                                    <div className="space-y-3 mb-10 text-right">
+                                        <div className="flex justify-between items-center">
+                                            <span className="text-[12px] font-bold text-slate-400 uppercase tracking-widest">Grand Total</span>
+                                            <span className="text-4xl font-black text-red-700 receipt-font">฿{billData.total}</span>
+                                        </div>
                                     </div>
-                                    <div className="mt-8 text-center"><Icon name="Heart" size={20} className="inline text-red-500 mr-2" fill="currentColor" /><span className="text-lg font-black italic">ขอบคุณครับ</span></div>
+
+                                    <div className="text-center mt-12 pb-4">
+                                        <div className="flex items-center justify-center gap-2 text-red-500 font-black italic text-xl mb-3">
+                                            <Icon name="Heart" size={16} className="fill-current" /> ขอบคุณที่อุดหนุนครับ <Icon name="Heart" size={16} className="fill-current" />
+                                        </div>
+                                        <p className="text-[9px] font-bold text-slate-300 uppercase tracking-widest">Tasty • Fresh • Best Quality</p>
+                                    </div>
+                                    <div className="receipt-zigzag"></div>
                                 </div>
 
-                                <button onClick={async () => {
-                                    setIsProcessing(true);
-                                    try {
-                                        const canvas = await html2canvas(receiptRef.current, { scale: 2 });
-                                        setGeneratedImg(canvas.toDataURL("image/png"));
-                                    } catch (e) { alert("Error!"); } finally { setIsProcessing(false); }
-                                }} className="w-full py-5 bg-slate-900 text-white rounded-[2rem] font-black text-lg shadow-xl active-scale flex items-center justify-center gap-3 mb-3"><Icon name="Image" size={22} /> {isProcessing ? "กำลังบันทึก..." : "1. บันทึกรูปบิล"}</button>
-                                <button onClick={() => setShowPayConfirm(true)} className="w-full py-5 bg-green-600 text-white rounded-[2rem] font-black text-2xl shadow-xl active-scale">2. จ่ายเงินแล้ว</button>
+                                <div className="space-y-3 px-2">
+                                    <button onClick={saveReceiptImage} disabled={isProcessing} className="w-full py-5 bg-slate-900 text-white rounded-[2rem] font-black text-lg shadow-xl active-scale flex items-center justify-center gap-3"><Icon name="Image" size={22} /> {isProcessing ? "กำลังบันทึกรูป..." : "บันทึกรูปบิลส่งไลน์"}</button>
+                                    <button onClick={() => setShowPayConfirm(true)} className="w-full py-5 bg-green-600 text-white rounded-[2rem] font-black text-2xl shadow-xl active-scale">รับเงิน / ล้างโต๊ะ</button>
+                                </div>
                             </div>
                         )}
                     </main>
 
-                    {/* Modals */}
+                    {/* Image Result Modal */}
                     {generatedImg && (
-                        <div className="fixed inset-0 bg-slate-900/95 z-[100] flex flex-col items-center justify-center p-6">
-                            <img src={generatedImg} className="max-h-[70vh] rounded-2xl shadow-2xl border-4 border-white" />
-                            <button onClick={() => setGeneratedImg(null)} className="mt-6 w-full max-w-xs py-5 bg-red-600 text-white rounded-full font-black text-xl">ปิดหน้าต่าง</button>
+                        <div className="fixed inset-0 bg-slate-900/98 z-[100] flex flex-col items-center justify-center p-6 animate-in">
+                            <div className="bg-white p-2 rounded-3xl shadow-2xl mb-8 max-w-full"><img src={generatedImg} className="max-h-[70vh] rounded-2xl" /></div>
+                            <p className="text-white font-bold mb-8 italic text-sm text-center tracking-wide">"กดค้างที่รูป" เพื่อบันทึกลงมือถือ<br/>หรือส่งต่อให้ลูกค้าได้เลยครับ</p>
+                            <button onClick={() => setGeneratedImg(null)} className="w-full max-w-xs py-5 bg-red-600 text-white rounded-full font-black text-xl shadow-xl active-scale">ปิดหน้าต่างนี้</button>
                         </div>
                     )}
 
                     {showPayConfirm && (
                         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[100] flex items-center justify-center p-6 animate-in">
-                            <div className="bg-white w-full max-w-sm rounded-[3rem] p-10 text-center shadow-2xl border-t-8 border-green-500">
-                                <Icon name="CheckCircle2" size={60} className="text-green-500 mx-auto mb-6" />
-                                <h3 className="text-2xl font-black mb-8">รับเงินเรียบร้อย?</h3>
-                                <button onClick={confirmAndReset} className="w-full py-5 bg-green-600 text-white rounded-3xl font-black text-xl shadow-lg mb-4">ตกลง และรีเซ็ตโต๊ะ</button>
-                                <button onClick={() => setShowPayConfirm(false)} className="text-slate-400 font-bold uppercase text-xs">ยกเลิก</button>
+                            <div className="bg-white w-full max-w-sm rounded-[3.5rem] p-12 text-center shadow-2xl border-t-8 border-green-500">
+                                <Icon name="CheckCircle2" size={64} className="text-green-500 mx-auto mb-6" />
+                                <h3 className="text-2xl font-black text-slate-900 mb-10 tracking-tight">ยืนยันรับเงิน<br/>และล้างออเดอร์?</h3>
+                                <button onClick={() => { const n = {...tables}; delete n[activeTable]; setTables(n); setBillData(null); setView('table-selection'); setShowPayConfirm(false); }} className="w-full py-5 bg-green-600 text-white rounded-3xl font-black text-xl shadow-xl mb-4 active-scale">ใช่ จ่ายเงินแล้ว</button>
+                                <button onClick={() => setShowPayConfirm(false)} className="text-slate-400 font-bold uppercase text-xs tracking-widest">ยกเลิก</button>
                             </div>
                         </div>
                     )}
@@ -328,7 +309,7 @@
             );
         };
 
-        // Render with delay to ensure libs are ready
+        // Render trigger
         setTimeout(() => {
             const root = ReactDOM.createRoot(document.getElementById('root'));
             root.render(<App />);
