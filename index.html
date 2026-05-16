@@ -274,8 +274,8 @@ const App = () => {
                 const total = getTableTotal(num);
                 const isOccupied = total > 0;
                 return (
-                  <button key={num} onClick={() => { setActiveTable(num); setView('order-entry'); }} className={`relative flex flex-col items-center justify-center p-8 sm:p-12 rounded-[2.5rem] border-4 transition-all active:scale-95 shadow-md ${isOccupied ? 'bg-white border-red-600 ring-8 ring-red-50' : 'bg-white border-gray-100'}`}>
-                    <span className={`text-5xl sm:text-6xl font-black mb-1 ${isOccupied ? 'text-red-700' : 'text-gray-200'}`}>{num}</span>
+                  <button key={num} onClick={() => { setActiveTable(num); setView('order-entry'); }} className={`relative flex flex-col items-center justify-center p-12 rounded-[2.5rem] border-4 transition-all active:scale-95 shadow-md ${isOccupied ? 'bg-white border-red-600 ring-8 ring-red-50' : 'bg-white border-gray-100'}`}>
+                    <span className={`text-6xl font-black mb-1 ${isOccupied ? 'text-red-700' : 'text-gray-200'}`}>{num}</span>
                     <span className={`text-[10px] font-black uppercase tracking-widest ${isOccupied ? 'text-red-500' : 'text-gray-400'}`}>{isOccupied ? 'มีลูกค้า' : 'ว่าง'}</span>
                     {isOccupied && <div className="absolute -top-3 -right-2 bg-red-600 text-white text-xs px-3 py-1.5 rounded-full font-black shadow-xl animate-bounce">฿{total}</div>}
                   </button>
@@ -397,7 +397,7 @@ const App = () => {
                 <label className="block text-[11px] font-black text-gray-400 mb-4 uppercase tracking-widest text-center">ระบุยอดเงินที่รับมา</label>
                 <div className="relative">
                    <span className="absolute left-6 top-1/2 -translate-y-1/2 text-gray-300 text-3xl font-black italic">฿</span>
-                   <input type="number" inputMode="decimal" value={receivedAmount} onChange={(e) => setReceivedAmount(e.target.value)} placeholder="0.00" className="w-full text-5xl font-black py-4 pl-14 text-center bg-gray-50 rounded-3xl outline-none text-red-600 border-4 border-transparent focus:border-red-100" />
+                   <input type="number" inputMode="decimal" value={receivedAmount} onChange={(e) => setReceivedAmount(e.target.value)} placeholder="0.00" className="w-full text-6xl font-black py-4 pl-14 text-center bg-gray-50 rounded-3xl outline-none text-red-600 border-4 border-transparent focus:border-red-100" />
                 </div>
                 {changeValue !== null && changeValue >= 0 && (
                   <div className="mt-6 p-6 bg-green-50 rounded-3xl flex flex-col items-center border-b-4 border-green-200 animate-in zoom-in">
@@ -423,94 +423,73 @@ const App = () => {
             )}
 
             {/* Receipt UI สำหรับบันทึกเป็นรูป */}
-            <div className="receipt-container mb-8 relative mx-auto w-[360px] max-w-full">
-              <div ref={receiptRef} className="bg-white rounded-t-2xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.15)] overflow-hidden p-0 relative">
-                {/* Header Section */}
-                <div className="bg-gradient-to-br from-red-700 to-red-600 px-6 py-8 text-center text-white relative">
-                  <div className="absolute inset-0 opacity-10" style={{ backgroundImage: 'radial-gradient(circle at center, white 1px, transparent 1px)', backgroundSize: '10px 10px' }}></div>
-                  <div className="relative z-10">
-                    <div className="mb-3 inline-flex items-center justify-center w-14 h-14 bg-white text-red-600 rounded-full shadow-lg"><UtensilsCrossed size={28} /></div>
-                    <h2 className="text-3xl font-black tracking-tight mb-1 drop-shadow-md">แม่บุญส่ง</h2>
-                    <p className="text-[10px] font-bold uppercase tracking-[0.2em] opacity-90 drop-shadow-sm">ขนมจีนน้ำยา - อาหารตามสั่ง</p>
-                    <div className="mt-5 px-5 py-2 bg-black/20 backdrop-blur-sm rounded-full inline-block text-xs font-black tracking-widest border border-white/20 shadow-inner">
-                      TABLE {billData.tableId}
-                    </div>
-                  </div>
+            <div className="receipt-container mb-8 relative">
+              <div ref={receiptRef} className="bg-white rounded-t-3xl shadow-2xl overflow-hidden p-0 relative border-t-8 border-red-700">
+                <div className="pt-12 pb-8 px-10 text-center">
+                  <div className="mb-4 inline-flex items-center justify-center w-16 h-16 bg-red-50 text-red-700 rounded-full border border-red-100 shadow-inner"><ReceiptText size={32} /></div>
+                  <h2 className="text-4xl font-black text-gray-900 tracking-tighter leading-none mb-1">แม่บุญส่ง</h2>
+                  <p className="text-[10px] text-gray-400 font-bold uppercase tracking-[0.3em]">Tasty - Fresh - Local</p>
+                  <p className="text-[11px] text-gray-500 font-bold mt-2">โทร 061-5241728</p>
+                  <div className="mt-8 inline-block py-2 px-8 bg-gray-900 text-white rounded-full text-xs font-black uppercase tracking-[0.2em] shadow-xl">Table {billData.tableId}</div>
                 </div>
 
-                <div className="px-6 py-8">
-                  <div className="flex justify-between items-end mb-6 pb-5 border-b-2 border-dashed border-gray-100">
-                    <div>
-                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">วันที่และเวลา</p>
-                      <p className="text-xs font-bold text-gray-800">{billData.date}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1.5">เลขที่ใบเสร็จ</p>
-                      <p className="text-xs font-bold text-gray-800">#INV-{Date.now().toString().slice(-6)}</p>
-                    </div>
-                  </div>
-
-                  <div className="flex justify-between text-[11px] font-black text-gray-400 uppercase tracking-widest mb-4">
-                    <span>รายการ</span>
-                    <span>จำนวนเงิน</span>
-                  </div>
-
-                  <div className="space-y-4 mb-8">
+                <div className="px-10 pb-16">
+                  <div className="flex justify-between text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4 border-b border-gray-100 pb-2"><span>รายการ</span><span>ราคารวม</span></div>
+                  <div className="space-y-5 mb-10">
                     {billData.items.map((item, idx) => (
                       <div key={idx} className="flex justify-between items-start">
                         <div className="flex-1 pr-4">
-                          <div className="font-bold text-gray-800 text-sm leading-tight">{item.name}</div>
-                          {item.details && <div className="text-[10px] text-red-500 font-bold mt-0.5 leading-tight">({item.details.join(', ')})</div>}
-                          <div className="text-[11px] text-gray-400 font-bold mt-1 tracking-tight">{item.quantity} x ฿{item.price}</div>
+                          <div className="font-bold text-gray-800 text-lg leading-tight mb-1">{item.name}</div>
+                          {item.details && <div className="text-[10px] text-red-600 font-black leading-tight">({item.details.join(', ')})</div>}
+                          <div className="text-[11px] text-gray-400 font-bold mt-1 uppercase tracking-tighter">฿{item.price} x {item.quantity}</div>
                         </div>
-                        <div className="font-black text-gray-900 text-sm">฿{item.price * item.quantity}</div>
+                        <div className="font-black text-gray-900 text-xl">฿{item.price * item.quantity}</div>
                       </div>
                     ))}
                   </div>
 
-                  <div className="border-t-2 border-dashed border-gray-200 pt-6 space-y-3">
-                    <div className="flex justify-between items-center text-sm font-bold text-gray-500">
-                      <span>รวมเป็นเงิน</span>
-                      <span>฿{billData.total}</span>
+                  <div className="border-t-4 border-gray-900 pt-8 space-y-4">
+                    <div className="flex justify-between items-center bg-gray-900 p-6 rounded-3xl shadow-xl">
+                      <span className="text-white/60 font-black text-xs uppercase tracking-widest">ยอดรวมทั้งหมด</span>
+                      <span className="text-4xl font-black text-white underline decoration-yellow-400 decoration-4 underline-offset-4">฿{billData.total}</span>
                     </div>
                     
-                    <div className="flex justify-between items-center text-sm font-bold text-gray-500">
-                      <span>วิธีชำระเงิน</span>
-                      <span className="text-gray-800">{paymentMethod === 'cash' ? 'เงินสด' : 'โอนเงิน'}</span>
-                    </div>
-
-                    {paymentMethod === 'cash' && receivedAmount && (
-                      <div className="flex justify-between items-center text-sm font-bold text-gray-500">
-                        <span>รับเงินมา</span>
-                        <span>฿{parseFloat(receivedAmount).toFixed(2)}</span>
+                    {/* ข้อมูลการเงินในบิล */}
+                    <div className="px-2 space-y-3">
+                      <div className="flex justify-between text-[11px] text-gray-500 font-black uppercase tracking-widest">
+                        <span>ชำระผ่าน</span>
+                        <span className="text-gray-900">{paymentMethod === 'cash' ? 'เงินสด (CASH)' : 'โอนผ่านธนาคาร'}</span>
                       </div>
-                    )}
-
-                    {paymentMethod === 'cash' && changeValue !== null && changeValue >= 0 && (
-                      <div className="flex justify-between items-center text-sm font-bold text-gray-500">
-                        <span>เงินทอน</span>
-                        <span className="text-red-600">฿{changeValue.toFixed(2)}</span>
-                      </div>
-                    )}
-
-                    <div className="flex justify-between items-center bg-red-50 p-4 rounded-xl mt-4 border border-red-100">
-                      <span className="text-red-700 font-black text-sm uppercase tracking-widest">ยอดสุทธิ</span>
-                      <span className="text-3xl font-black text-red-700">฿{billData.total}</span>
+                      
+                      {paymentMethod === 'cash' && receivedAmount && (
+                        <>
+                          <div className="flex justify-between items-center text-[13px] text-gray-800 font-bold border-t border-gray-50 pt-2">
+                            <span className="text-gray-400">รับเงินมา:</span>
+                            <span>฿{parseFloat(receivedAmount).toFixed(2)}</span>
+                          </div>
+                          {changeValue >= 0 && (
+                            <div className="flex justify-between items-center text-lg text-red-600 font-black">
+                              <span>เงินทอน:</span>
+                              <span className="text-2xl underline decoration-2">฿{changeValue.toFixed(2)}</span>
+                            </div>
+                          )}
+                        </>
+                      )}
                     </div>
                   </div>
 
-                  <div className="mt-8 text-center">
-                    <div className="w-12 h-1 bg-gray-200 mx-auto rounded-full mb-5"></div>
-                    <div className="flex items-center justify-center gap-2 text-red-500 mb-2">
-                      <Heart size={14} fill="currentColor" />
-                      <span className="text-sm font-black italic tracking-tighter uppercase">ขอบคุณที่อุดหนุน</span>
-                      <Heart size={14} fill="currentColor" />
-                    </div>
-                    <p className="text-[10px] text-gray-400 font-bold">061-5241728 • โอกาสหน้าเชิญใหม่</p>
+                  <div className="mt-16 text-center border-t-2 border-dashed border-gray-100 pt-10">
+                     <p className="text-[10px] text-gray-300 font-bold mb-5 tracking-[0.2em]">{billData.date}</p>
+                     <div className="flex items-center justify-center gap-3 text-red-600 mb-3">
+                       <Heart size={18} fill="currentColor" />
+                       <span className="text-xl font-black italic tracking-tighter text-center leading-none uppercase">ขอบคุณที่มาอุดหนุนครับ/ค่ะ</span>
+                       <Heart size={18} fill="currentColor" />
+                     </div>
+                     <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest opacity-50">Delicious - Cheap - Traditional Thai Noodle</p>
                   </div>
                 </div>
               </div>
-              <div className="receipt-zigzag no-print"></div>
+              <div className="receipt-zigzag no-print scale-y-125"></div>
             </div>
 
             <div className="space-y-4 pb-12">
@@ -586,7 +565,7 @@ const App = () => {
         @keyframes zoomIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
         .animate-in { animation: fadeIn 0.4s forwards; }
         .zoom-in { animation: zoomIn 0.3s forwards; }
-        .receipt-zigzag { height: 12px; background-image: linear-gradient(135deg, white 25%, transparent 25%), linear-gradient(225deg, white 25%, transparent 25%); background-position: left bottom; background-repeat: repeat-x; background-size: 16px 24px; filter: drop-shadow(0 10px 10px rgba(0,0,0,0.05)); margin-top: -1px; z-index: 10; }
+        .receipt-zigzag { height: 16px; background-image: linear-gradient(135deg, white 25%, transparent 25%), linear-gradient(225deg, white 25%, transparent 25%); background-position: left bottom; background-repeat: repeat-x; background-size: 20px 32px; filter: drop-shadow(0 6px 6px rgba(0,0,0,0.08)); margin-top: -1px; z-index: 10; }
       `}} />
     </div>
   );
