@@ -3,34 +3,50 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>แม่บุญส่ง POS - Pro Version</title>
+    <title>แม่บุญส่ง POS - Ultra Stable</title>
     
-    <!-- Dependencies -->
-    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="https://unpkg.com/lucide-react@latest"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-    
+    <!-- 1. Load CSS & Fonts first -->
     <link href="https://fonts.googleapis.com/css2?family=Anuphan:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
     
     <style>
-        body { font-family: 'Anuphan', sans-serif; -webkit-tap-highlight-color: transparent; background-color: #FDFCFB; color: #1e293b; margin: 0; padding: 0; }
+        body { font-family: 'Anuphan', sans-serif; -webkit-tap-highlight-color: transparent; background-color: #FDFCFB; color: #1e293b; margin: 0; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
         .animate-in { animation: fadeIn 0.3s ease-out forwards; }
         .active-scale:active { transform: scale(0.96); transition: transform 0.1s; }
-        #root-loading { display: flex; align-items: center; justify-content: center; height: 100vh; font-weight: 800; color: #b91c1c; }
+        #app-loading { display: flex; align-items: center; justify-content: center; height: 100vh; flex-direction: column; gap: 1rem; color: #b91c1c; font-weight: 800; }
+        .spinner { width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid #b91c1c; border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
-    <div id="root"><div id="root-loading">กำลังโหลดระบบ...</div></div>
+    <div id="root">
+        <div id="app-loading">
+            <div class="spinner"></div>
+            <p>กำลังโหลดระบบ POS...</p>
+        </div>
+    </div>
+
+    <!-- 2. Load JS Libraries sequentially -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://unpkg.com/lucide-react@latest"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 
     <script type="text/babel">
-        const { useState, useEffect, useRef } = React;
+        // --- SAFE ICON COMPONENT ---
+        const Icon = ({ name, size = 24, className = "" }) => {
+            try {
+                const LucideIcon = window.LucideReact[name] || window.LucideReact.HelpCircle;
+                return <LucideIcon size={size} className={className} strokeWidth={2.5} />;
+            } catch (e) {
+                return <span style={{display: 'inline-block', width: size, height: size}}></span>;
+            }
+        };
 
         const MENU = {
             khanomJeenRad: [
@@ -78,38 +94,30 @@
         };
 
         const App = () => {
-            // Destructure Icons safely
-            const { 
-                Plus, Minus, ShoppingCart, ChevronLeft, Receipt, 
-                CheckCircle2, Trash2, UtensilsCrossed, Check, 
-                CreditCard, Banknote, Heart, Image: ImageIcon, 
-                ClipboardList, LayoutGrid, ReceiptText, Search, PlusCircle, Type, Coins, X
-            } = window.LucideReact;
-
-            const [tables, setTables] = useState(() => {
-                const saved = localStorage.getItem('mb_pos_tables_v2');
+            const [tables, setTables] = React.useState(() => {
+                const saved = localStorage.getItem('mb_pos_v3');
                 return saved ? JSON.parse(saved) : {};
             });
-            const [activeTable, setActiveTable] = useState(null);
-            const [view, setView] = useState('table-selection');
-            const [activeCategory, setActiveCategory] = useState('all');
-            const [billData, setBillData] = useState(null);
-            const [paymentMethod, setPaymentMethod] = useState('cash');
-            const [generatedImg, setGeneratedImg] = useState(null);
-            const [isProcessing, setIsProcessing] = useState(false);
-            const [fourGirlsModal, setFourGirlsModal] = useState(false);
-            const [tempCurries, setTempCurries] = useState([]);
-            const [showPayConfirm, setShowPayConfirm] = useState(false);
+            const [activeTable, setActiveTable] = React.useState(null);
+            const [view, setView] = React.useState('table-selection');
+            const [activeCategory, setActiveCategory] = React.useState('all');
+            const [billData, setBillData] = React.useState(null);
+            const [paymentMethod, setPaymentMethod] = React.useState('cash');
+            const [generatedImg, setGeneratedImg] = React.useState(null);
+            const [isProcessing, setIsProcessing] = React.useState(false);
+            const [fourGirlsModal, setFourGirlsModal] = React.useState(false);
+            const [tempCurries, setTempCurries] = React.useState([]);
+            const [showPayConfirm, setShowPayConfirm] = React.useState(false);
             
-            // State for Custom Items
-            const [customName, setCustomName] = useState('');
-            const [customPrice, setCustomPrice] = useState('');
-            const [showCustomForm, setShowCustomForm] = useState(false);
+            // Custom Item State
+            const [customName, setCustomName] = React.useState('');
+            const [customPrice, setCustomPrice] = React.useState('');
+            const [showCustomForm, setShowCustomForm] = React.useState(false);
 
-            const receiptRef = useRef(null);
+            const receiptRef = React.useRef(null);
 
-            useEffect(() => {
-                localStorage.setItem('mb_pos_tables_v2', JSON.stringify(tables));
+            React.useEffect(() => {
+                localStorage.setItem('mb_pos_v3', JSON.stringify(tables));
             }, [tables]);
 
             const getTableTotal = (num) => (tables[num] || []).reduce((sum, item) => sum + (item.price * item.quantity), 0);
@@ -127,15 +135,9 @@
                 });
             };
 
-            const addCustomItem = () => {
+            const addCustom = () => {
                 if (!customName || !customPrice) return;
-                const newItem = {
-                    id: `custom-${Date.now()}`,
-                    name: customName,
-                    price: parseFloat(customPrice),
-                    category: 'รายการพิเศษ'
-                };
-                addItem(newItem);
+                addItem({ id: `c-${Date.now()}`, name: customName, price: parseFloat(customPrice), category: 'พิเศษ' });
                 setCustomName(''); setCustomPrice(''); setShowCustomForm(false);
             };
 
@@ -156,91 +158,64 @@
                 setBillData(null); setView('table-selection'); setShowPayConfirm(false); setActiveTable(null);
             };
 
-            const categories = ['all', ...Object.keys(MENU)];
-            const getCategoryLabel = (key) => key === 'all' ? 'ทั้งหมด' : MENU[key][0].category;
-
             return (
-                <div className="min-h-screen max-w-lg mx-auto bg-[#FDFCFB]">
+                <div className="min-h-screen max-w-lg mx-auto">
                     {/* Header */}
-                    <header className="bg-white border-b border-slate-100 p-4 sticky top-0 z-50 flex justify-between items-center shadow-sm">
-                        <div onClick={() => { setView('table-selection'); setActiveTable(null); }} className="cursor-pointer active-scale">
-                            <h1 className="text-xl font-black text-red-700 flex items-center gap-2">แม่บุญส่ง <span className="text-[10px] bg-red-100 px-2 py-0.5 rounded-full font-bold uppercase">Pro</span></h1>
+                    <header className="bg-white border-b p-4 sticky top-0 z-50 flex justify-between items-center shadow-sm">
+                        <div onClick={() => { setView('table-selection'); setActiveTable(null); }} className="cursor-pointer">
+                            <h1 className="text-xl font-black text-red-700 flex items-center gap-2">แม่บุญส่ง <span className="text-[10px] bg-red-100 px-2 py-0.5 rounded-full font-bold">POS</span></h1>
                         </div>
-                        {view !== 'table-selection' && (
-                            <button onClick={() => setView('table-selection')} className="p-2.5 bg-slate-50 rounded-2xl text-slate-400"><LayoutGrid size={22} /></button>
-                        )}
+                        {view !== 'table-selection' && <button onClick={() => setView('table-selection')} className="p-2 bg-slate-50 rounded-xl text-slate-500"><Icon name="LayoutGrid" size={22} /></button>}
                     </header>
 
                     <main className="p-4">
-                        {/* 1. TABLE SELECTION */}
+                        {/* 1. TABLE Selection */}
                         {view === 'table-selection' && (
-                            <div className="animate-in pt-2">
-                                <h2 className="text-xl font-black mb-6 flex items-center gap-2"><ClipboardList className="text-red-600" /> เลือกโต๊ะลูกค้า</h2>
-                                <div className="grid grid-cols-3 gap-4">
-                                    {[1,2,3,4,5,6,7,8,9].map(num => (
-                                        <button key={num} onClick={() => { setActiveTable(num); setView('order-entry'); }} 
-                                            className={`aspect-square rounded-[2rem] bg-white border flex flex-col items-center justify-center shadow-sm transition-all active-scale ${getTableTotal(num) > 0 ? 'border-red-500 ring-4 ring-red-50 shadow-lg' : 'border-slate-100'}`}>
-                                            <span className={`text-4xl font-black ${getTableTotal(num) > 0 ? 'text-red-700' : 'text-slate-200'}`}>{num}</span>
-                                            {getTableTotal(num) > 0 && <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full mt-1 font-black">฿{getTableTotal(num)}</span>}
-                                        </button>
-                                    ))}
-                                </div>
+                            <div className="animate-in grid grid-cols-3 gap-4 pt-4">
+                                {[1,2,3,4,5,6,7,8,9].map(num => (
+                                    <button key={num} onClick={() => { setActiveTable(num); setView('order-entry'); }} 
+                                        className={`aspect-square rounded-[2rem] bg-white border flex flex-col items-center justify-center shadow-sm active-scale ${getTableTotal(num) > 0 ? 'border-red-500 ring-4 ring-red-50 shadow-lg' : 'border-slate-100'}`}>
+                                        <span className={`text-4xl font-black ${getTableTotal(num) > 0 ? 'text-red-700' : 'text-slate-200'}`}>{num}</span>
+                                        {getTableTotal(num) > 0 && <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full mt-1 font-bold">฿{getTableTotal(num)}</span>}
+                                    </button>
+                                ))}
                             </div>
                         )}
 
-                        {/* 2. ORDER ENTRY */}
+                        {/* 2. ORDER Entry */}
                         {view === 'order-entry' && (
-                            <div className="animate-in pb-28">
-                                <div className="bg-red-700 text-white p-6 rounded-[2.5rem] flex justify-between items-center mb-6 shadow-xl shadow-red-100">
+                            <div className="animate-in pb-32">
+                                <div className="bg-red-700 text-white p-6 rounded-[2.5rem] flex justify-between items-center mb-6 shadow-xl">
                                     <div className="flex items-center gap-4">
                                         <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center font-black text-2xl">{activeTable}</div>
-                                        <div><h2 className="text-xl font-black leading-none">โต๊ะ {activeTable}</h2><p className="text-[10px] opacity-60 font-bold mt-1 uppercase">Ordering</p></div>
+                                        <h2 className="text-xl font-black">โต๊ะ {activeTable}</h2>
                                     </div>
-                                    <div className="text-right"><p className="text-3xl font-black">฿{getTableTotal(activeTable)}</p></div>
+                                    <p className="text-3xl font-black">฿{getTableTotal(activeTable)}</p>
                                 </div>
 
-                                {/* Custom Item Toggle */}
-                                <button onClick={() => setShowCustomForm(!showCustomForm)} className="w-full mb-6 p-4 bg-indigo-50 border border-indigo-100 rounded-[1.5rem] text-indigo-700 font-bold flex items-center justify-center gap-2 active-scale">
-                                    <PlusCircle size={20} /> {showCustomForm ? 'ปิดแบบฟอร์ม' : 'เพิ่มรายการพิเศษ/ตั้งราคาเอง'}
-                                </button>
-
-                                {showCustomForm && (
-                                    <div className="bg-white p-5 rounded-[2rem] border-2 border-indigo-100 shadow-sm mb-8 animate-in">
-                                        <div className="grid gap-3">
-                                            <div className="relative">
-                                                <Type size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" />
-                                                <input type="text" placeholder="ชื่อรายการ (เช่น ขนมจีนเพิ่มน้ำ)" value={customName} onChange={(e) => setCustomName(e.target.value)} className="w-full pl-12 pr-4 py-3 bg-slate-50 rounded-xl outline-none font-bold" />
-                                            </div>
-                                            <div className="relative">
-                                                <Coins size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" />
-                                                <input type="number" placeholder="ราคา" value={customPrice} onChange={(e) => setCustomPrice(e.target.value)} className="w-full pl-12 pr-4 py-3 bg-slate-50 rounded-xl outline-none font-black text-red-600" />
-                                            </div>
-                                            <button onClick={addCustomItem} className="py-3 bg-indigo-600 text-white rounded-xl font-black shadow-lg shadow-indigo-100 active-scale">เพิ่มลงโต๊ะ {activeTable}</button>
+                                {/* Custom Form */}
+                                <div className="mb-6">
+                                    <button onClick={() => setShowCustomForm(!showCustomForm)} className="w-full p-4 bg-indigo-50 border border-indigo-100 rounded-2xl text-indigo-700 font-bold flex items-center justify-center gap-2 active-scale text-sm">
+                                        <Icon name="PlusCircle" size={18} /> {showCustomForm ? 'ปิดแบบฟอร์ม' : 'เพิ่มรายการพิเศษ/ราคาเอง'}
+                                    </button>
+                                    {showCustomForm && (
+                                        <div className="mt-4 p-4 bg-white border rounded-2xl shadow-sm space-y-3 animate-in">
+                                            <input type="text" placeholder="ชื่อรายการ..." value={customName} onChange={e => setCustomName(e.target.value)} className="w-full p-3 bg-slate-50 rounded-xl outline-none font-bold" />
+                                            <input type="number" placeholder="ราคา..." value={customPrice} onChange={e => setCustomPrice(e.target.value)} className="w-full p-3 bg-slate-50 rounded-xl outline-none font-black text-red-600" />
+                                            <button onClick={addCustom} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-black active-scale shadow-lg shadow-indigo-100">บันทึก</button>
                                         </div>
-                                    </div>
-                                )}
-
-                                <div className="flex gap-2 overflow-x-auto pb-4 no-scrollbar -mx-4 px-4 sticky top-[73px] bg-[#FDFCFB]/90 backdrop-blur-md z-30">
-                                    {categories.map(cat => (
-                                        <button key={cat} onClick={() => setActiveCategory(cat)} className={`px-5 py-2.5 rounded-full font-bold text-sm whitespace-nowrap transition-all ${activeCategory === cat ? 'bg-red-700 text-white shadow-lg' : 'bg-white text-slate-400 border border-slate-100 active-scale'}`}>{getCategoryLabel(cat)}</button>
-                                    ))}
+                                    )}
                                 </div>
 
-                                <div className="space-y-6 mt-4">
-                                    {Object.entries(MENU).filter(([key]) => activeCategory === 'all' || activeCategory === key).map(([key, items]) => (
+                                <div className="space-y-6">
+                                    {Object.entries(MENU).map(([key, items]) => (
                                         <div key={key}>
-                                            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 flex items-center gap-2"><span className="w-4 h-[1px] bg-slate-200"></span> {getCategoryLabel(key)}</h3>
+                                            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 border-l-2 border-red-500 pl-2">{items[0].category}</h3>
                                             <div className="grid gap-3">
                                                 {items.map(item => (
-                                                    <div key={item.id} onClick={() => addItem(item)} className="bg-white p-4 rounded-3xl flex justify-between items-center border border-slate-100 shadow-sm active-scale">
-                                                        <div className="flex-1">
-                                                            <h4 className="font-bold text-slate-800 text-lg leading-tight">{item.name}</h4>
-                                                            <div className="flex items-center gap-2 mt-1">
-                                                                <span className="text-red-600 font-black text-lg">฿{item.price}</span>
-                                                                {item.isSpecial && <span className="text-[9px] bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full font-black uppercase tracking-tighter">แนะนำ</span>}
-                                                            </div>
-                                                        </div>
-                                                        <div className="w-11 h-11 bg-slate-50 text-red-600 rounded-2xl flex items-center justify-center"><Plus size={24} strokeWidth={3} /></div>
+                                                    <div key={item.id} onClick={() => addItem(item)} className="bg-white p-4 rounded-3xl flex justify-between items-center border shadow-sm active-scale">
+                                                        <div><h4 className="font-bold text-slate-800">{item.name}</h4><p className="text-red-600 font-black">฿{item.price}</p></div>
+                                                        <div className="w-10 h-10 bg-slate-50 text-red-600 rounded-2xl flex items-center justify-center"><Icon name="Plus" size={20} /></div>
                                                     </div>
                                                 ))}
                                             </div>
@@ -248,11 +223,32 @@
                                     ))}
                                 </div>
 
-                                {/* Floating Footer */}
+                                {/* Summary List */}
+                                {(tables[activeTable] || []).length > 0 && (
+                                    <div className="mt-10 p-4 bg-white rounded-3xl border border-slate-100">
+                                        <h3 className="font-black text-sm mb-4 flex items-center gap-2"><Icon name="ClipboardList" size={18} /> รายการปัจจุบัน</h3>
+                                        <div className="divide-y divide-slate-50">
+                                            {tables[activeTable].map(item => (
+                                                <div key={item.entryId} className="py-3 flex justify-between items-center">
+                                                    <div className="flex-1 pr-4">
+                                                        <p className="font-bold text-sm">{item.name}</p>
+                                                        {item.details && <p className="text-[9px] text-red-500 font-bold">{item.details.join(', ')}</p>}
+                                                    </div>
+                                                    <div className="flex items-center gap-3">
+                                                        <button onClick={() => removeItem(item.entryId)} className="w-8 h-8 bg-slate-50 text-slate-400 rounded-lg flex items-center justify-center"><Icon name="Minus" size={14} /></button>
+                                                        <span className="font-black text-red-600">{item.quantity}</span>
+                                                        <button onClick={() => addItem(item, item.details)} className="w-8 h-8 bg-red-700 text-white rounded-lg flex items-center justify-center"><Icon name="Plus" size={14} /></button>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
                                 <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-xl border-t z-40">
                                     <div className="max-w-md mx-auto flex gap-3">
-                                        <button onClick={() => { if(confirm('ล้างออเดอร์ทั้งหมด?')) confirmAndReset(); }} className="p-5 bg-slate-50 text-slate-300 rounded-3xl active-scale"><Trash2 size={24} /></button>
-                                        <button onClick={() => { setBillData({ tableId: activeTable, items: tables[activeTable], total: getTableTotal(activeTable), date: new Date().toLocaleString('th-TH') }); setView('checkout'); }} disabled={getTableTotal(activeTable) === 0} className="flex-1 py-5 bg-red-700 text-white rounded-[2rem] font-black text-xl shadow-xl disabled:bg-slate-200 active-scale">สรุปยอด / คิดเงิน</button>
+                                        <button onClick={() => { if(confirm('ล้าง?')) confirmAndReset(); }} className="p-5 bg-slate-50 text-slate-300 rounded-3xl"><Icon name="Trash2" size={24} /></button>
+                                        <button onClick={() => { setBillData({ tableId: activeTable, items: tables[activeTable], total: getTableTotal(activeTable), date: new Date().toLocaleString('th-TH') }); setView('checkout'); }} disabled={getTableTotal(activeTable) === 0} className="flex-1 py-5 bg-red-700 text-white rounded-[2rem] font-black text-xl shadow-xl active-scale disabled:bg-slate-200">คิดเงิน</button>
                                     </div>
                                 </div>
                             </div>
@@ -260,103 +256,71 @@
 
                         {/* 3. CHECKOUT */}
                         {view === 'checkout' && billData && (
-                            <div className="animate-in pb-24 text-center">
-                                <div className="flex items-center gap-4 mb-6 text-left">
-                                    <button onClick={() => setView('order-entry')} className="p-3 bg-white border rounded-2xl text-slate-400 active-scale"><ChevronLeft size={24} /></button>
-                                    <h2 className="text-2xl font-black">คิดเงิน โต๊ะ {billData.tableId}</h2>
+                            <div className="animate-in pb-20">
+                                <div className="flex items-center gap-4 mb-6">
+                                    <button onClick={() => setView('order-entry')} className="p-3 bg-white border rounded-2xl text-slate-400"><Icon name="ChevronLeft" size={24} /></button>
+                                    <h2 className="text-2xl font-black">สรุปยอด โต๊ะ {billData.tableId}</h2>
                                 </div>
 
                                 <div className="flex gap-2 mb-6">
-                                    <button onClick={() => setPaymentMethod('cash')} className={`flex-1 py-4 rounded-2xl font-black flex items-center justify-center gap-2 ${paymentMethod === 'cash' ? 'bg-red-700 text-white shadow-lg' : 'bg-white text-slate-400 border'}`}><Banknote size={20} /> เงินสด</button>
-                                    <button onClick={() => setPaymentMethod('transfer')} className={`flex-1 py-4 rounded-2xl font-black flex items-center justify-center gap-2 ${paymentMethod === 'transfer' ? 'bg-blue-600 text-white shadow-lg' : 'bg-white text-slate-400 border'}`}><CreditCard size={20} /> โอนเงิน</button>
+                                    <button onClick={() => setPaymentMethod('cash')} className={`flex-1 py-4 rounded-2xl font-black flex items-center justify-center gap-2 ${paymentMethod === 'cash' ? 'bg-red-700 text-white shadow-lg' : 'bg-white text-slate-400 border'}`}><Icon name="Banknote" size={20} /> เงินสด</button>
+                                    <button onClick={() => setPaymentMethod('transfer')} className={`flex-1 py-4 rounded-2xl font-black flex items-center justify-center gap-2 ${paymentMethod === 'transfer' ? 'bg-blue-600 text-white shadow-lg' : 'bg-white text-slate-400 border'}`}><Icon name="CreditCard" size={20} /> โอนเงิน</button>
                                 </div>
 
                                 {paymentMethod === 'transfer' && (
-                                    <div className="bg-white p-6 rounded-[2.5rem] border text-center mb-6 animate-in">
-                                        <img src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(generateBankQRData('3897208520', billData.total))}`} className="w-44 h-44 mx-auto mb-4 rounded-lg shadow-sm" />
-                                        <p className="font-black text-blue-600 text-lg tracking-widest">ธนาคารกรุงเทพ 389-7-20852-0</p>
+                                    <div className="bg-white p-6 rounded-[2rem] border text-center mb-6">
+                                        <img src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(generateBankQRData('3897208520', billData.total))}`} className="w-40 h-40 mx-auto mb-4" />
+                                        <p className="font-black text-blue-600 text-lg">ธนาคารกรุงเทพ 389-7-20852-0</p>
                                     </div>
                                 )}
 
-                                <div ref={receiptRef} className="bg-white p-8 shadow-2xl border-t-8 border-red-700 rounded-b-lg mb-8 text-left">
-                                    <div className="text-center mb-8">
-                                        <h3 className="text-4xl font-black text-red-700 mb-1">แม่บุญส่ง</h3>
-                                        <p className="text-[9px] font-bold text-slate-400 uppercase tracking-[0.3em]">Thai Noodle Specialist</p>
-                                        <div className="bg-slate-900 text-white px-6 py-1 rounded-full text-[10px] font-black mt-4 inline-block uppercase">Table {billData.tableId}</div>
-                                    </div>
+                                <div ref={receiptRef} className="bg-white p-8 shadow-2xl border-t-8 border-red-700 rounded-b-lg mb-8">
+                                    <h3 className="text-center text-4xl font-black text-red-700 mb-6 tracking-tighter">แม่บุญส่ง</h3>
                                     <div className="space-y-4 mb-8 border-t border-dashed pt-6">
                                         {billData.items.map((item, i) => (
                                             <div key={i} className="flex justify-between items-start text-sm">
                                                 <div className="flex-1 pr-4">
-                                                    <p className="font-bold text-slate-800 leading-tight">{item.name}</p>
-                                                    {item.details && <p className="text-[9px] text-red-500 font-bold mt-0.5">{item.details.join(', ')}</p>}
-                                                    <p className="text-[10px] text-slate-400 font-bold mt-0.5">฿{item.price} x {item.quantity}</p>
+                                                    <p className="font-bold">{item.name}</p>
+                                                    <p className="text-[10px] text-slate-400">฿{item.price} x {item.quantity}</p>
                                                 </div>
                                                 <span className="font-black">฿{item.price * item.quantity}</span>
                                             </div>
                                         ))}
                                     </div>
                                     <div className="bg-slate-900 text-white p-6 rounded-3xl flex justify-between items-center shadow-xl">
-                                        <span className="text-xs font-black opacity-60 uppercase">ยอดรวม</span>
+                                        <span className="text-xs font-black opacity-60">ยอดรวม</span>
                                         <span className="text-4xl font-black underline decoration-red-500 decoration-4 underline-offset-4">฿{billData.total}</span>
                                     </div>
-                                    <div className="mt-8 text-center text-[10px] text-slate-300 font-bold uppercase tracking-widest">{billData.date}</div>
-                                    <div className="mt-4 flex items-center justify-center gap-2 text-red-500 font-black italic">
-                                        <Heart size={16} fill="currentColor" /> ขอบคุณที่มาอุดหนุนครับ <Heart size={16} fill="currentColor" />
-                                    </div>
+                                    <div className="mt-8 text-center"><Icon name="Heart" size={20} className="inline text-red-500 mr-2" fill="currentColor" /><span className="text-lg font-black italic">ขอบคุณครับ</span></div>
                                 </div>
 
-                                <div className="space-y-3">
-                                    <button onClick={async () => {
-                                        if (!receiptRef.current) return;
-                                        setIsProcessing(true);
-                                        try {
-                                            const canvas = await html2canvas(receiptRef.current, { backgroundColor: '#ffffff', scale: 2, useCORS: true });
-                                            setGeneratedImg(canvas.toDataURL("image/png"));
-                                        } catch (e) { alert("บันทึกรูปไม่ได้"); } finally { setIsProcessing(false); }
-                                    }} className="w-full py-5 bg-slate-900 text-white rounded-[2rem] font-black text-lg shadow-xl active-scale flex items-center justify-center gap-3"><ImageIcon size={22} /> {isProcessing ? "กำลังบันทึก..." : "1. บันทึกรูปบิล"}</button>
-                                    <button onClick={() => setShowPayConfirm(true)} className="w-full py-5 bg-green-600 text-white rounded-[2rem] font-black text-2xl shadow-xl active-scale">2. จ่ายเงินแล้ว</button>
-                                </div>
+                                <button onClick={async () => {
+                                    setIsProcessing(true);
+                                    try {
+                                        const canvas = await html2canvas(receiptRef.current, { scale: 2 });
+                                        setGeneratedImg(canvas.toDataURL("image/png"));
+                                    } catch (e) { alert("Error!"); } finally { setIsProcessing(false); }
+                                }} className="w-full py-5 bg-slate-900 text-white rounded-[2rem] font-black text-lg shadow-xl active-scale flex items-center justify-center gap-3 mb-3"><Icon name="Image" size={22} /> {isProcessing ? "กำลังบันทึก..." : "1. บันทึกรูปบิล"}</button>
+                                <button onClick={() => setShowPayConfirm(true)} className="w-full py-5 bg-green-600 text-white rounded-[2rem] font-black text-2xl shadow-xl active-scale">2. จ่ายเงินแล้ว</button>
                             </div>
                         )}
                     </main>
 
                     {/* Modals */}
                     {generatedImg && (
-                        <div className="fixed inset-0 bg-slate-900/95 z-[100] flex flex-col items-center justify-center p-6 animate-in">
+                        <div className="fixed inset-0 bg-slate-900/95 z-[100] flex flex-col items-center justify-center p-6">
                             <img src={generatedImg} className="max-h-[70vh] rounded-2xl shadow-2xl border-4 border-white" />
-                            <p className="text-white font-bold mt-6 mb-8 italic text-sm">"กดค้างที่รูป" เพื่อบันทึกรูปครับ</p>
-                            <button onClick={() => setGeneratedImg(null)} className="w-full max-w-xs py-5 bg-red-600 text-white rounded-full font-black text-xl shadow-xl active-scale">ปิดหน้าต่าง</button>
+                            <button onClick={() => setGeneratedImg(null)} className="mt-6 w-full max-w-xs py-5 bg-red-600 text-white rounded-full font-black text-xl">ปิดหน้าต่าง</button>
                         </div>
                     )}
 
                     {showPayConfirm && (
                         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[100] flex items-center justify-center p-6 animate-in">
-                            <div className="bg-white w-full max-w-sm rounded-[3rem] p-10 text-center shadow-2xl">
-                                <CheckCircle2 size={60} className="text-green-500 mx-auto mb-6" />
-                                <h3 className="text-2xl font-black mb-2">รับเงินเรียบร้อย?</h3>
-                                <button onClick={confirmAndReset} className="w-full py-5 bg-green-600 text-white rounded-3xl font-black text-xl shadow-lg active-scale mb-4">ตกลง และรีเซ็ตโต๊ะ</button>
+                            <div className="bg-white w-full max-w-sm rounded-[3rem] p-10 text-center shadow-2xl border-t-8 border-green-500">
+                                <Icon name="CheckCircle2" size={60} className="text-green-500 mx-auto mb-6" />
+                                <h3 className="text-2xl font-black mb-8">รับเงินเรียบร้อย?</h3>
+                                <button onClick={confirmAndReset} className="w-full py-5 bg-green-600 text-white rounded-3xl font-black text-xl shadow-lg mb-4">ตกลง และรีเซ็ตโต๊ะ</button>
                                 <button onClick={() => setShowPayConfirm(false)} className="text-slate-400 font-bold uppercase text-xs">ยกเลิก</button>
-                            </div>
-                        </div>
-                    )}
-
-                    {fourGirlsModal && (
-                        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[100] flex items-center justify-center p-4">
-                            <div className="bg-white w-full max-w-sm rounded-[3rem] shadow-2xl overflow-hidden border-t-8 border-red-700 animate-in">
-                                <div className="p-8 text-center border-b"><h2 className="text-2xl font-black">เลือกน้ำยา 4 อย่าง</h2><p className="text-[10px] text-red-600 font-black mt-1 uppercase">ชุดสี่สาว 140 บาท</p></div>
-                                <div className="p-8">
-                                    <div className="flex gap-2 mb-8 justify-center">
-                                        {[0,1,2,3].map(i => <div key={i} className={`w-12 h-12 rounded-xl border-2 flex items-center justify-center font-black text-[10px] ${tempCurries[i] ? 'bg-red-50 border-red-500 text-red-700' : 'border-dashed border-slate-200 text-slate-300'}`}>{tempCurries[i] || i+1}</div>)}
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-2 mb-8">
-                                        {CURRY_OPTIONS.map(c => <button key={c} onClick={() => tempCurries.length < 4 && setTempCurries([...tempCurries, c])} className={`p-4 rounded-2xl border-2 text-xs font-black transition-all ${tempCurries.length >= 4 ? 'opacity-30' : 'bg-white active:bg-red-50 active:border-red-500 text-slate-600'}`}>{c}</button>)}
-                                    </div>
-                                    <div className="flex gap-3">
-                                        <button onClick={() => setTempCurries(tempCurries.slice(0, -1))} className="flex-1 py-4 bg-slate-100 rounded-2xl font-bold active-scale">ลบ</button>
-                                        <button disabled={tempCurries.length < 4} onClick={() => { addItem(MENU.special.find(i => i.id === 'kjo_4girls'), tempCurries); setFourGirlsModal(false); }} className="flex-[2] py-4 bg-red-700 text-white rounded-2xl font-black disabled:bg-slate-200 shadow-lg">เพิ่มลงโต๊ะ</button>
-                                    </div>
-                                </div>
                             </div>
                         </div>
                     )}
@@ -364,8 +328,11 @@
             );
         };
 
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
+        // Render with delay to ensure libs are ready
+        setTimeout(() => {
+            const root = ReactDOM.createRoot(document.getElementById('root'));
+            root.render(<App />);
+        }, 100);
     </script>
 </body>
 </html>
