@@ -271,6 +271,12 @@
             const total = getTableTotal(activeTable);
             const change = receivedAmount ? parseFloat(receivedAmount) - total : 0;
 
+            // --- Unserved Count tracking ---
+            const getTableUnservedCount = (num) => {
+                const items = tables[num] || [];
+                return items.reduce((sum, item) => sum + (item.isServed ? 0 : item.quantity), 0);
+            };
+
             // --- Database Sync for Active Orders ---
             const updateTableOnSupabase = async (tableNum, newItems) => {
                 if (isOnline && supabase) {
@@ -440,8 +446,15 @@
                     const entryId = details ? `${item.id}-${details.join('-')}` : item.id;
                     const idx = list.findIndex(i => i.entryId === entryId);
                     let newList;
-                    if (idx > -1) { newList = [...list]; newList[idx].quantity += 1; }
-                    else { newList = [...list, { ...item, entryId, details, quantity: 1 }]; }
+                    if (idx > -1) { 
+                        newList = [...list]; 
+                        newList[idx].quantity += 1; 
+                        // If it has been served, we might want to keep status or not. Let's keep it as is, or reset if quantity increases. Let's reset isServed if new plates are added so they get tracked.
+                        newList[idx].isServed = false;
+                    }
+                    else { 
+                        newList = [...list, { ...item, entryId, details, quantity: 1, isServed: false }]; 
+                    }
                     updateTableOnSupabase(activeTable, newList);
                     return { ...prev, [activeTable]: newList };
                 });
@@ -465,6 +478,18 @@
                         return { ...prev, [activeTable]: next }; 
                     }
                     const newList = list.filter(i => i.entryId !== id);
+                    updateTableOnSupabase(activeTable, newList);
+                    return { ...prev, [activeTable]: newList };
+                });
+            };
+
+            // Toggle Serve status
+            const toggleServeItem = (entryId) => {
+                setTables(prev => {
+                    const list = prev[activeTable] || [];
+                    const newList = list.map(item => 
+                        item.entryId === entryId ? { ...item, isServed: !item.isServed } : item
+                    );
                     updateTableOnSupabase(activeTable, newList);
                     return { ...prev, [activeTable]: newList };
                 });
@@ -495,6 +520,8 @@
                     }
                 } else {
                     const localSales = JSON.parse(localStorage.getItem('mb_pos_local_sales') || '[]');
+                    // Add uuid/id to local sale to be deletable
+                    saleRecord.id = `local_${Date.now()}_${Math.random()}`;
                     localSales.push(saleRecord);
                     localStorage.setItem('mb_pos_local_sales', JSON.stringify(localSales));
                 }
@@ -510,6 +537,58 @@
                 });
                 setView('table-selection');
                 setActiveTable(null);
+            };
+
+            // --- Delete Sale Record & Clear Day Sales ---
+            const deleteSaleRecord = async (saleId) => {
+                showConfirm('ต้องการลบประวัติยอดขายบิลนี้?', async () => {
+                    if (isOnline && supabase) {
+                        try {
+                            const { error } = await supabase
+                                .from('pos_sales')
+                                .delete()
+                                .eq('id', saleId);
+                            if (error) throw error;
+                            fetchSalesForDate(salesDate);
+                        } catch (e) {
+                            console.error("Failed to delete sale record from Supabase:", e);
+                        }
+                    } else {
+                        const localSales = JSON.parse(localStorage.getItem('mb_pos_local_sales') || '[]');
+                        const filtered = localSales.filter(s => s.id !== saleId);
+                        localStorage.setItem('mb_pos_local_sales', JSON.stringify(filtered));
+                        fetchSalesForDate(salesDate);
+                    }
+                });
+            };
+
+            const clearAllSalesForDate = async () => {
+                showConfirm(`ต้องการลบประวัติยอดขายทั้งหมดของวันที่ ${salesDate}?`, async () => {
+                    const startOfDay = `${salesDate}T00:00:00.000Z`;
+                    const endOfDay = `${salesDate}T23:59:59.999Z`;
+
+                    if (isOnline && supabase) {
+                        try {
+                            const { error } = await supabase
+                                .from('pos_sales')
+                                .delete()
+                                .gte('created_at', startOfDay)
+                                .lte('created_at', endOfDay);
+                            if (error) throw error;
+                            fetchSalesForDate(salesDate);
+                        } catch (e) {
+                            console.error("Failed to clear sales for day:", e);
+                        }
+                    } else {
+                        const localSales = JSON.parse(localStorage.getItem('mb_pos_local_sales') || '[]');
+                        const filtered = localSales.filter(s => {
+                            const sDate = s.created_at.split('T')[0];
+                            return sDate !== salesDate;
+                        });
+                        localStorage.setItem('mb_pos_local_sales', JSON.stringify(filtered));
+                        fetchSalesForDate(salesDate);
+                    }
+                });
             };
 
             // --- Daily Sales Summary Loader ---
@@ -610,13 +689,30 @@
                             <div className="animate-in pt-4">
                                 <h2 className="text-xl font-black mb-8 px-2 flex items-center gap-2"><Icon name="LayoutGrid" size={20} className="text-red-600" /> เลือกลูกค้า</h2>
                                 <div className="grid grid-cols-3 gap-5">
-                                    {[1,2,3,4,5,6,7,8,9].map(num => (
-                                        <button key={num} onClick={() => { setActiveTable(num); setView('order-entry'); }} 
-                                            className={`aspect-square rounded-[2.5rem] bg-white border-2 flex flex-col items-center justify-center shadow-sm transition-all active-scale ${getTableTotal(num) > 0 ? 'border-red-500 ring-4 ring-red-50 shadow-lg' : 'border-slate-100'}`}>
-                                            <span className={`text-4xl font-black ${getTableTotal(num) > 0 ? 'text-red-700' : 'text-slate-200'}`}>{num}</span>
-                                            {getTableTotal(num) > 0 && <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full mt-2 font-bold tracking-tight">฿{getTableTotal(num)}</span>}
-                                        </button>
-                                    ))}
+                                    {[1,2,3,4,5,6,7,8,9].map(num => {
+                                        const totalVal = getTableTotal(num);
+                                        const pendingQty = getTableUnservedCount(num);
+                                        return (
+                                            <button key={num} onClick={() => { setActiveTable(num); setView('order-entry'); }} 
+                                                className={`aspect-square rounded-[2.5rem] bg-white border-2 flex flex-col items-center justify-center shadow-sm transition-all active-scale ${totalVal > 0 ? 'border-red-500 ring-4 ring-red-50 shadow-lg' : 'border-slate-100'}`}>
+                                                <span className={`text-4xl font-black ${totalVal > 0 ? 'text-red-700' : 'text-slate-200'}`}>{num}</span>
+                                                {totalVal > 0 && (
+                                                    <div className="flex flex-col items-center mt-2 gap-1 w-full px-1">
+                                                        <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full font-bold tracking-tight">฿{totalVal}</span>
+                                                        {pendingQty > 0 ? (
+                                                            <span className="bg-amber-500 text-white text-[8px] px-1.5 py-0.5 rounded-full font-black tracking-tight animate-pulse">
+                                                                ค้าง {pendingQty} จาน
+                                                            </span>
+                                                        ) : (
+                                                            <span className="bg-green-600 text-white text-[8px] px-1.5 py-0.5 rounded-full font-black tracking-tight">
+                                                                เสิร์ฟครบแล้ว
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                )}
+                                            </button>
+                                        );
+                                    })}
                                 </div>
                             </div>
                         ) : view === 'order-entry' ? (
@@ -681,15 +777,25 @@
                                         <h3 className="font-black text-sm mb-4">รายการปัจจุบัน</h3>
                                         <div className="divide-y divide-slate-50">
                                             {tables[activeTable].map(item => (
-                                                <div key={item.entryId} className="py-4 flex justify-between items-center">
-                                                    <div className="flex-1 pr-4">
+                                                <div key={item.entryId} className="py-4 flex justify-between items-center gap-2">
+                                                    <div className="flex-1 pr-1">
                                                         <p className="font-bold text-slate-700 leading-tight">{item.name}</p>
                                                         {item.details && <p className="text-[10px] text-red-500 font-bold mt-1 leading-tight">{item.details.join(', ')}</p>}
                                                     </div>
-                                                    <div className="flex items-center gap-4 bg-slate-50 p-1 rounded-xl">
-                                                        <button onClick={() => removeItem(item.entryId)} className="w-8 h-8 bg-white text-slate-400 rounded-lg shadow-sm active-scale flex items-center justify-center"><Icon name="Minus" size={14} /></button>
-                                                        <span className="font-black text-lg min-w-[20px] text-center text-red-600">{item.quantity}</span>
-                                                        <button onClick={() => addItem(item, item.details)} className="w-8 h-8 bg-red-700 text-white rounded-lg shadow-sm active-scale flex items-center justify-center"><Icon name="Plus" size={14} /></button>
+                                                    
+                                                    {/* Serving toggler & quantity controls */}
+                                                    <div className="flex flex-col items-end gap-2">
+                                                        <div className="flex items-center gap-2">
+                                                            <button onClick={() => toggleServeItem(item.entryId)}
+                                                                className={`px-3 py-1 rounded-full text-[10px] font-black tracking-tight active-scale ${item.isServed ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700 border border-amber-200'}`}>
+                                                                {item.isServed ? 'เสิร์ฟแล้ว' : 'ยังไม่เสิร์ฟ'}
+                                                            </button>
+                                                            <div className="flex items-center gap-3 bg-slate-50 p-1 rounded-xl">
+                                                                <button onClick={() => removeItem(item.entryId)} className="w-7 h-7 bg-white text-slate-400 rounded-lg shadow-sm active-scale flex items-center justify-center"><Icon name="Minus" size={12} /></button>
+                                                                <span className="font-black text-sm min-w-[15px] text-center text-red-600">{item.quantity}</span>
+                                                                <button onClick={() => addItem(item, item.details)} className="w-7 h-7 bg-red-700 text-white rounded-lg shadow-sm active-scale flex items-center justify-center"><Icon name="Plus" size={12} /></button>
+                                                            </div>
+                                                        </div>
                                                     </div>
                                                 </div>
                                             ))}
@@ -758,67 +864,119 @@
                                 <div className="bg-slate-100 p-4 rounded-[2.5rem] mb-6">
                                     <p className="text-xs font-black text-slate-400 mb-3 text-center uppercase tracking-wider">ตัวอย่างบิลใบเสร็จ</p>
                                     <div className="receipt-preview-container">
+                                        {/* Table-based receipt rendering to prevent html2canvas flexbox alignment issues */}
                                         <div className="receipt-print-area receipt-font shadow-md" ref={receiptRef}>
                                             <div className="text-center" style={{ marginBottom: '20px' }}>
-                                                <h3 className="font-black text-red-700 leading-none tracking-tighter" style={{ fontSize: '42px', marginBottom: '4px' }}>แม่บุญส่ง</h3>
+                                                <h3 className="font-black text-red-700 leading-none tracking-tighter" style={{ fontSize: '42px', marginBottom: '4px', textAlign: 'center' }}>แม่บุญส่ง</h3>
                                             </div>
+                                            
                                             <div className="dashed-line"></div>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                                <span className="bg-slate-900 text-white rounded-full uppercase tracking-widest font-bold" style={{ fontSize: '11px', padding: '3px 12px' }}>TABLE {activeTable}</span>
-                                                <span className="text-slate-300 font-bold" style={{ fontSize: '11px' }}>#ID-{orderId}</span>
-                                            </div>
-                                            <p className="text-slate-400" style={{ fontSize: '10px', marginBottom: '16px' }}>{new Date().toLocaleString('th-TH')}</p>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #f1f5f9', paddingBottom: '6px', marginBottom: '12px' }}>
-                                                <span className="font-black text-slate-300 uppercase" style={{ fontSize: '9px', letterSpacing: '0.15em' }}>รายการอาหาร</span>
-                                                <span className="font-black text-slate-300 uppercase" style={{ fontSize: '9px', letterSpacing: '0.15em' }}>รวม</span>
-                                            </div>
-                                            <div style={{ marginBottom: '16px' }}>
-                                                {(tables[activeTable] || []).map((item, i) => (
-                                                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '10px' }}>
-                                                        <div style={{ flex: 1, minWidth: 0 }}>
-                                                            <p className="font-bold text-slate-800" style={{ fontSize: '14px', lineHeight: '1.3', wordBreak: 'break-word' }}>{item.name}</p>
-                                                            {item.details && <p className="font-bold text-red-500" style={{ fontSize: '9px', marginTop: '2px', lineHeight: '1.3' }}>{item.details.join(', ')}</p>}
-                                                            <p className="font-bold text-slate-400 uppercase" style={{ fontSize: '10px', marginTop: '2px' }}>฿{item.price} x {item.quantity}</p>
-                                                        </div>
-                                                        <span className="font-black text-slate-900" style={{ fontSize: '16px', whiteSpace: 'nowrap' }}>฿{item.price * item.quantity}</span>
-                                                    </div>
-                                                ))}
-                                            </div>
+                                            
+                                            {/* Table details (Table number & ID) */}
+                                            <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '8px' }}>
+                                                <tbody>
+                                                    <tr>
+                                                        <td style={{ textAlign: 'left', verticalAlign: 'middle' }}>
+                                                            <span className="bg-slate-900 text-white rounded-full uppercase tracking-widest font-bold" style={{ fontSize: '11px', padding: '3px 12px', display: 'inline-block' }}>TABLE {activeTable}</span>
+                                                        </td>
+                                                        <td style={{ textAlign: 'right', verticalAlign: 'middle' }}>
+                                                            <span className="text-slate-300 font-bold" style={{ fontSize: '11px' }}>#ID-{orderId}</span>
+                                                        </td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+
+                                            <p className="text-slate-400" style={{ fontSize: '10px', marginBottom: '16px', margin: '0 0 16px 0' }}>{new Date().toLocaleString('th-TH')}</p>
+                                            
+                                            {/* Items header */}
+                                            <table style={{ width: '100%', borderCollapse: 'collapse', borderBottom: '2px solid #f1f5f9', paddingBottom: '6px', marginBottom: '12px' }}>
+                                                <tbody>
+                                                    <tr>
+                                                        <td style={{ textAlign: 'left', fontWeight: '900', fontSize: '9px', color: '#cbd5e1', letterSpacing: '0.15em', textTransform: 'uppercase', paddingBottom: '6px' }}>รายการอาหาร</td>
+                                                        <td style={{ textAlign: 'right', fontWeight: '900', fontSize: '9px', color: '#cbd5e1', letterSpacing: '0.15em', textTransform: 'uppercase', paddingBottom: '6px' }}>รวม</td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+
+                                            {/* Items details */}
+                                            <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '16px' }}>
+                                                <tbody>
+                                                    {(tables[activeTable] || []).map((item, i) => (
+                                                        <tr key={i}>
+                                                            <td style={{ textAlign: 'left', paddingBottom: '12px', verticalAlign: 'top' }}>
+                                                                <p className="font-bold text-slate-800" style={{ fontSize: '14px', lineHeight: '1.3', margin: 0 }}>{item.name}</p>
+                                                                {item.details && <p className="font-bold text-red-500" style={{ fontSize: '9px', marginTop: '2px', marginBottom: 0, lineHeight: '1.3' }}>{item.details.join(', ')}</p>}
+                                                                <p className="font-bold text-slate-400 uppercase" style={{ fontSize: '10px', marginTop: '2px', marginBottom: 0 }}>฿{item.price} x {item.quantity}</p>
+                                                            </td>
+                                                            <td style={{ textAlign: 'right', paddingBottom: '12px', verticalAlign: 'top', fontWeight: '900', fontSize: '16px', color: '#0f172a' }}>
+                                                                ฿{item.price * item.quantity}
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+
                                             <div className="dashed-line"></div>
-                                            <div style={{ marginBottom: '12px' }}>
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                    <span className="font-bold text-slate-400 uppercase" style={{ fontSize: '10px', letterSpacing: '0.15em' }}>ชำระโดย</span>
-                                                    <span className="font-bold text-slate-800 uppercase" style={{ fontSize: '13px' }}>{paymentMethod === 'cash' ? 'เงินสด (CASH)' : 'เงินโอน (TRANSFER)'}</span>
-                                                </div>
-                                                {paymentMethod === 'cash' && receivedAmount && (
-                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f8fafc', paddingTop: '6px', marginTop: '6px' }}>
-                                                        <span className="text-slate-400" style={{ fontSize: '11px' }}>รับเงินมา:</span>
-                                                        <span className="text-slate-400" style={{ fontSize: '11px' }}>฿{parseFloat(receivedAmount).toFixed(2)}</span>
-                                                    </div>
-                                                )}
-                                            </div>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '2px solid #f1f5f9', paddingTop: '12px' }}>
-                                                <span className="font-bold text-slate-400 uppercase" style={{ fontSize: '11px', letterSpacing: '0.15em' }}>ยอดสุทธิ</span>
-                                                <span className="font-black text-red-700" style={{ fontSize: '36px', lineHeight: 1 }}>฿{total}</span>
-                                            </div>
+
+                                            {/* Payment details */}
+                                            <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '12px', marginTop: '12px' }}>
+                                                <tbody>
+                                                    <tr>
+                                                        <td style={{ textAlign: 'left', fontSize: '11px', color: '#94a3b8', fontWeight: 'bold', letterSpacing: '0.15em', textTransform: 'uppercase' }}>ชำระโดย</td>
+                                                        <td style={{ textAlign: 'right', fontSize: '13px', color: '#1e293b', fontWeight: 'bold', textTransform: 'uppercase' }}>
+                                                            {paymentMethod === 'cash' ? 'เงินสด (CASH)' : 'เงินโอน (TRANSFER)'}
+                                                        </td>
+                                                    </tr>
+                                                    {paymentMethod === 'cash' && receivedAmount && (
+                                                        <tr>
+                                                            <td style={{ textAlign: 'left', fontSize: '11px', color: '#94a3b8', paddingTop: '6px' }}>รับเงินมา:</td>
+                                                            <td style={{ textAlign: 'right', fontSize: '11px', color: '#94a3b8', paddingTop: '6px' }}>฿{parseFloat(receivedAmount).toFixed(2)}</td>
+                                                        </tr>
+                                                    )}
+                                                </tbody>
+                                            </table>
+
+                                            {/* Net total */}
+                                            <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: '2px solid #f1f5f9', marginTop: '12px', paddingTop: '12px' }}>
+                                                <tbody>
+                                                    <tr>
+                                                        <td style={{ textAlign: 'left', fontSize: '11px', color: '#94a3b8', fontWeight: 'bold', letterSpacing: '0.15em', textTransform: 'uppercase', paddingTop: '12px' }}>ยอดสุทธิ</td>
+                                                        <td style={{ textAlign: 'right', color: '#b91c1c', fontWeight: '900', fontSize: '36px', lineHeight: 1, paddingTop: '12px' }}>
+                                                            ฿{total}
+                                                        </td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
+
+                                            {/* Cash Change */}
                                             {paymentMethod === 'cash' && receivedAmount && change >= 0 && (
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '2px dashed #dcfce7', paddingTop: '10px', marginTop: '10px' }}>
-                                                    <span className="font-black text-green-600 uppercase" style={{ fontSize: '11px', letterSpacing: '0.15em' }}>เงินทอน:</span>
-                                                    <span className="font-black text-green-600" style={{ fontSize: '28px', lineHeight: 1 }}>฿{change.toFixed(2)}</span>
-                                                </div>
+                                                <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: '2px dashed #dcfce7', marginTop: '10px', paddingTop: '10px' }}>
+                                                    <tbody>
+                                                        <tr>
+                                                            <td style={{ textAlign: 'left', color: '#16a34a', fontWeight: '900', fontSize: '11px', letterSpacing: '0.15em', textTransform: 'uppercase', paddingTop: '10px' }}>เงินทอน:</td>
+                                                            <td style={{ textAlign: 'right', color: '#16a34a', fontWeight: '900', fontSize: '28px', lineHeight: 1, paddingTop: '10px' }}>
+                                                                ฿{change.toFixed(2)}
+                                                            </td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
                                             )}
+
+                                            {/* Transfer Target info */}
                                             {paymentMethod === 'transfer' && (
                                                 <div style={{ borderTop: '2px dashed #bfdbfe', paddingTop: '14px', marginTop: '14px', textAlign: 'center' }}>
-                                                    <p className="font-bold text-slate-400 uppercase" style={{ fontSize: '9px', letterSpacing: '0.15em', marginBottom: '4px' }}>โอนเข้าบัญชี</p>
-                                                    <p className="font-black text-blue-600" style={{ fontSize: '16px', letterSpacing: '0.1em' }}>389-7-20852-0</p>
-                                                    <p className="font-bold text-slate-400" style={{ fontSize: '9px', marginTop: '2px' }}>ธนาคารกรุงเทพ • คุณแม่บุญส่ง</p>
+                                                    <p className="font-bold text-slate-400 uppercase" style={{ fontSize: '9px', letterSpacing: '0.15em', marginBottom: '4px', marginTop: 0 }}>โอนเข้าบัญชี</p>
+                                                    <p className="font-black text-blue-600" style={{ fontSize: '16px', letterSpacing: '0.1em', margin: 0 }}>389-7-20852-0</p>
+                                                    <p className="font-bold text-slate-400" style={{ fontSize: '9px', marginTop: '2px', marginBottom: 0 }}>ธนาคารกรุงเทพ • คุณแม่บุญส่ง</p>
                                                 </div>
                                             )}
+
+                                            {/* Bottom message */}
                                             <div style={{ textAlign: 'center', borderTop: '2px dashed #f1f5f9', paddingTop: '16px', marginTop: '16px' }}>
                                                 <div className="font-black text-red-500" style={{ fontSize: '20px', marginBottom: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
                                                     <Icon name="Heart" size={18} /> ขอบคุณครับ <Icon name="Heart" size={18} />
                                                 </div>
-                                                <p className="font-bold text-slate-300 uppercase" style={{ fontSize: '8px', letterSpacing: '0.25em', marginTop: '6px' }}>Tasty • Fresh • Best Quality</p>
+                                                <p className="font-bold text-slate-300 uppercase" style={{ fontSize: '8px', letterSpacing: '0.25em', marginTop: '6px', marginBottom: 0 }}>Tasty • Fresh • Best Quality</p>
                                             </div>
                                             <div className="receipt-zigzag"></div>
                                         </div>
@@ -963,7 +1121,14 @@
                                     <h2 className="text-lg font-black text-slate-800 flex items-center gap-2">
                                         <Icon name="TrendingUp" size={18} className="text-emerald-500" /> สรุปยอดขายรายวัน
                                     </h2>
-                                    <button onClick={() => setShowSalesSummary(false)} className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center active-scale"><Icon name="X" size={20} /></button>
+                                    <div className="flex items-center gap-2">
+                                        <button onClick={clearAllSalesForDate} disabled={salesData.length === 0}
+                                            className="px-3 py-2 bg-red-50 text-red-600 rounded-xl font-bold text-xs flex items-center gap-1 active-scale disabled:opacity-40"
+                                            title="ล้างประวัติยอดขายทั้งหมดของวันนี้">
+                                            <Icon name="Trash2" size={14} /> ล้างประวัติวันนี้
+                                        </button>
+                                        <button onClick={() => setShowSalesSummary(false)} className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center active-scale"><Icon name="X" size={20} /></button>
+                                    </div>
                                 </div>
 
                                 <div className="p-4 space-y-6">
@@ -1054,16 +1219,22 @@
                                                 ) : (
                                                     <div className="divide-y divide-slate-50 max-h-[300px] overflow-y-auto no-scrollbar">
                                                         {salesData.map(sale => (
-                                                            <div key={sale.id} onClick={() => setSelectedReceiptForView(sale)} className="py-3 flex justify-between items-center cursor-pointer hover:bg-slate-50 px-2 rounded-xl transition-all">
-                                                                <div>
-                                                                    <p className="font-bold text-xs text-slate-800">{sale.order_id} (โต๊ะ {sale.table_number})</p>
+                                                            <div key={sale.id} onClick={() => setSelectedReceiptForView(sale)} className="py-3 flex justify-between items-center cursor-pointer hover:bg-slate-50 px-2 rounded-xl transition-all group">
+                                                                <div className="flex-1 min-w-0">
+                                                                    <p className="font-bold text-xs text-slate-800 truncate">{sale.order_id} (โต๊ะ {sale.table_number})</p>
                                                                     <p className="text-[9px] text-slate-400 font-bold mt-0.5">
                                                                         {new Date(sale.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} • {sale.payment_method === 'cash' ? '💵 เงินสด' : '💳 เงินโอน'}
                                                                     </p>
                                                                 </div>
-                                                                <div className="text-right">
-                                                                    <p className="font-black text-sm text-red-600">฿{sale.total}</p>
-                                                                    <p className="text-[8px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full font-bold inline-block mt-0.5">กดดูบิล</p>
+                                                                <div className="flex items-center gap-3">
+                                                                    <div className="text-right">
+                                                                        <p className="font-black text-sm text-red-600">฿{sale.total}</p>
+                                                                        <p className="text-[8px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full font-bold inline-block mt-0.5">กดดูบิล</p>
+                                                                    </div>
+                                                                    <button onClick={(e) => { e.stopPropagation(); deleteSaleRecord(sale.id); }} 
+                                                                        className="p-2 bg-red-50 text-red-500 rounded-lg hover:bg-red-100 active-scale" title="ลบยอดขายนี้">
+                                                                        <Icon name="Trash2" size={14} />
+                                                                    </button>
                                                                 </div>
                                                             </div>
                                                         ))}
@@ -1088,65 +1259,116 @@
                                 <div className="receipt-preview-container mb-4">
                                     <div className="receipt-print-area receipt-font shadow-inner" ref={historyReceiptRef}>
                                         <div className="text-center" style={{ marginBottom: '20px' }}>
-                                            <h3 className="font-black text-red-700 leading-none tracking-tighter" style={{ fontSize: '42px', marginBottom: '4px' }}>แม่บุญส่ง</h3>
+                                            <h3 className="font-black text-red-700 leading-none tracking-tighter" style={{ fontSize: '42px', marginBottom: '4px', textAlign: 'center' }}>แม่บุญส่ง</h3>
                                         </div>
+                                        
                                         <div className="dashed-line"></div>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                            <span className="bg-slate-900 text-white rounded-full uppercase tracking-widest font-bold" style={{ fontSize: '11px', padding: '3px 12px' }}>TABLE {selectedReceiptForView.table_number}</span>
-                                            <span className="text-slate-300 font-bold" style={{ fontSize: '11px' }}>{selectedReceiptForView.order_id}</span>
-                                        </div>
-                                        <p className="text-slate-400" style={{ fontSize: '10px', marginBottom: '16px' }}>{new Date(selectedReceiptForView.created_at).toLocaleString('th-TH')}</p>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #f1f5f9', paddingBottom: '6px', marginBottom: '12px' }}>
-                                            <span className="font-black text-slate-300 uppercase" style={{ fontSize: '9px', letterSpacing: '0.15em' }}>รายการอาหาร</span>
-                                            <span className="font-black text-slate-300 uppercase" style={{ fontSize: '9px', letterSpacing: '0.15em' }}>รวม</span>
-                                        </div>
-                                        <div style={{ marginBottom: '16px' }}>
-                                            {(selectedReceiptForView.items || []).map((item, i) => (
-                                                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '10px' }}>
-                                                    <div style={{ flex: 1, minWidth: 0 }}>
-                                                        <p className="font-bold text-slate-800" style={{ fontSize: '14px', lineHeight: '1.3', wordBreak: 'break-word' }}>{item.name}</p>
-                                                        {item.details && <p className="font-bold text-red-500" style={{ fontSize: '9px', marginTop: '2px', lineHeight: '1.3' }}>{item.details.join(', ')}</p>}
-                                                        <p className="font-bold text-slate-400 uppercase" style={{ fontSize: '10px', marginTop: '2px' }}>฿{item.price} x {item.quantity}</p>
-                                                    </div>
-                                                    <span className="font-black text-slate-900" style={{ fontSize: '16px', whiteSpace: 'nowrap' }}>฿{item.price * item.quantity}</span>
-                                                </div>
-                                            ))}
-                                        </div>
+                                        
+                                        {/* Table details (Table number & ID) */}
+                                        <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '8px' }}>
+                                            <tbody>
+                                                <tr>
+                                                    <td style={{ textAlign: 'left', verticalAlign: 'middle' }}>
+                                                        <span className="bg-slate-900 text-white rounded-full uppercase tracking-widest font-bold" style={{ fontSize: '11px', padding: '3px 12px', display: 'inline-block' }}>TABLE {selectedReceiptForView.table_number}</span>
+                                                    </td>
+                                                    <td style={{ textAlign: 'right', verticalAlign: 'middle' }}>
+                                                        <span className="text-slate-300 font-bold" style={{ fontSize: '11px' }}>{selectedReceiptForView.order_id}</span>
+                                                    </td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+
+                                        <p className="text-slate-400" style={{ fontSize: '10px', marginBottom: '16px', margin: '0 0 16px 0' }}>{new Date(selectedReceiptForView.created_at).toLocaleString('th-TH')}</p>
+                                        
+                                        {/* Items header */}
+                                        <table style={{ width: '100%', borderCollapse: 'collapse', borderBottom: '2px solid #f1f5f9', paddingBottom: '6px', marginBottom: '12px' }}>
+                                            <tbody>
+                                                <tr>
+                                                    <td style={{ textAlign: 'left', fontWeight: '900', fontSize: '9px', color: '#cbd5e1', letterSpacing: '0.15em', textTransform: 'uppercase', paddingBottom: '6px' }}>รายการอาหาร</td>
+                                                    <td style={{ textAlign: 'right', fontWeight: '900', fontSize: '9px', color: '#cbd5e1', letterSpacing: '0.15em', textTransform: 'uppercase', paddingBottom: '6px' }}>รวม</td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+
+                                        {/* Items details */}
+                                        <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '16px' }}>
+                                            <tbody>
+                                                {(selectedReceiptForView.items || []).map((item, i) => (
+                                                    <tr key={i}>
+                                                        <td style={{ textAlign: 'left', paddingBottom: '12px', verticalAlign: 'top' }}>
+                                                            <p className="font-bold text-slate-800" style={{ fontSize: '14px', lineHeight: '1.3', margin: 0 }}>{item.name}</p>
+                                                            {item.details && <p className="font-bold text-red-500" style={{ fontSize: '9px', marginTop: '2px', marginBottom: 0, lineHeight: '1.3' }}>{item.details.join(', ')}</p>}
+                                                            <p className="font-bold text-slate-400 uppercase" style={{ fontSize: '10px', marginTop: '2px', marginBottom: 0 }}>฿{item.price} x {item.quantity}</p>
+                                                        </td>
+                                                        <td style={{ textAlign: 'right', paddingBottom: '12px', verticalAlign: 'top', fontWeight: '900', fontSize: '16px', color: '#0f172a' }}>
+                                                            ฿{item.price * item.quantity}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+
                                         <div className="dashed-line"></div>
-                                        <div style={{ marginBottom: '12px' }}>
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                                <span className="font-bold text-slate-400 uppercase" style={{ fontSize: '10px', letterSpacing: '0.15em' }}>ชำระโดย</span>
-                                                <span className="font-bold text-slate-800 uppercase" style={{ fontSize: '13px' }}>{selectedReceiptForView.payment_method === 'cash' ? 'เงินสด (CASH)' : 'เงินโอน (TRANSFER)'}</span>
-                                            </div>
-                                            {selectedReceiptForView.payment_method === 'cash' && selectedReceiptForView.received_amount && (
-                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f8fafc', paddingTop: '6px', marginTop: '6px' }}>
-                                                    <span className="text-slate-400" style={{ fontSize: '11px' }}>รับเงินมา:</span>
-                                                    <span className="text-slate-400" style={{ fontSize: '11px' }}>฿{Number(selectedReceiptForView.received_amount).toFixed(2)}</span>
-                                                </div>
-                                            )}
-                                        </div>
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '2px solid #f1f5f9', paddingTop: '12px' }}>
-                                            <span className="font-bold text-slate-400 uppercase" style={{ fontSize: '11px', letterSpacing: '0.15em' }}>ยอดสุทธิ</span>
-                                            <span className="font-black text-red-700" style={{ fontSize: '36px', lineHeight: 1 }}>฿{selectedReceiptForView.total}</span>
-                                        </div>
+
+                                        {/* Payment details */}
+                                        <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '12px', marginTop: '12px' }}>
+                                            <tbody>
+                                                <tr>
+                                                    <td style={{ textAlign: 'left', fontSize: '11px', color: '#94a3b8', fontWeight: 'bold', letterSpacing: '0.15em', textTransform: 'uppercase' }}>ชำระโดย</td>
+                                                    <td style={{ textAlign: 'right', fontSize: '13px', color: '#1e293b', fontWeight: 'bold', textTransform: 'uppercase' }}>
+                                                        {selectedReceiptForView.payment_method === 'cash' ? 'เงินสด (CASH)' : 'เงินโอน (TRANSFER)'}
+                                                    </td>
+                                                </tr>
+                                                {selectedReceiptForView.payment_method === 'cash' && selectedReceiptForView.received_amount && (
+                                                    <tr>
+                                                        <td style={{ textAlign: 'left', fontSize: '11px', color: '#94a3b8', paddingTop: '6px' }}>รับเงินมา:</td>
+                                                        <td style={{ textAlign: 'right', fontSize: '11px', color: '#94a3b8', paddingTop: '6px' }}>฿{Number(selectedReceiptForView.received_amount).toFixed(2)}</td>
+                                                    </tr>
+                                                )}
+                                            </tbody>
+                                        </table>
+
+                                        {/* Net total */}
+                                        <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: '2px solid #f1f5f9', marginTop: '12px', paddingTop: '12px' }}>
+                                            <tbody>
+                                                <tr>
+                                                    <td style={{ textAlign: 'left', fontSize: '11px', color: '#94a3b8', fontWeight: 'bold', letterSpacing: '0.15em', textTransform: 'uppercase', paddingTop: '12px' }}>ยอดสุทธิ</td>
+                                                    <td style={{ textAlign: 'right', color: '#b91c1c', fontWeight: '900', fontSize: '36px', lineHeight: 1, paddingTop: '12px' }}>
+                                                        ฿{selectedReceiptForView.total}
+                                                    </td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+
+                                        {/* Cash Change */}
                                         {selectedReceiptForView.payment_method === 'cash' && selectedReceiptForView.received_amount && selectedReceiptForView.change_amount !== null && (
-                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '2px dashed #dcfce7', paddingTop: '10px', marginTop: '10px' }}>
-                                                <span className="font-black text-green-600 uppercase" style={{ fontSize: '11px', letterSpacing: '0.15em' }}>เงินทอน:</span>
-                                                <span className="font-black text-green-600" style={{ fontSize: '28px', lineHeight: 1 }}>฿{Number(selectedReceiptForView.change_amount).toFixed(2)}</span>
-                                            </div>
+                                            <table style={{ width: '100%', borderCollapse: 'collapse', borderTop: '2px dashed #dcfce7', marginTop: '10px', paddingTop: '10px' }}>
+                                                <tbody>
+                                                    <tr>
+                                                        <td style={{ textAlign: 'left', color: '#16a34a', fontWeight: '900', fontSize: '11px', letterSpacing: '0.15em', textTransform: 'uppercase', paddingTop: '10px' }}>เงินทอน:</td>
+                                                        <td style={{ textAlign: 'right', color: '#16a34a', fontWeight: '900', fontSize: '28px', lineHeight: 1, paddingTop: '10px' }}>
+                                                            ฿{Number(selectedReceiptForView.change_amount).toFixed(2)}
+                                                        </td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
                                         )}
+
+                                        {/* Transfer Target info */}
                                         {selectedReceiptForView.payment_method === 'transfer' && (
                                             <div style={{ borderTop: '2px dashed #bfdbfe', paddingTop: '14px', marginTop: '14px', textAlign: 'center' }}>
-                                                <p className="font-bold text-slate-400 uppercase" style={{ fontSize: '9px', letterSpacing: '0.15em', marginBottom: '4px' }}>โอนเข้าบัญชี</p>
-                                                <p className="font-black text-blue-600" style={{ fontSize: '16px', letterSpacing: '0.1em' }}>389-7-20852-0</p>
-                                                <p className="font-bold text-slate-400" style={{ fontSize: '9px', marginTop: '2px' }}>ธนาคารกรุงเทพ • คุณแม่บุญส่ง</p>
+                                                <p className="font-bold text-slate-400 uppercase" style={{ fontSize: '9px', letterSpacing: '0.15em', marginBottom: '4px', marginTop: 0 }}>โอนเข้าบัญชี</p>
+                                                <p className="font-black text-blue-600" style={{ fontSize: '16px', letterSpacing: '0.1em', margin: 0 }}>389-7-20852-0</p>
+                                                <p className="font-bold text-slate-400" style={{ fontSize: '9px', marginTop: '2px', marginBottom: 0 }}>ธนาคารกรุงเทพ • คุณแม่บุญส่ง</p>
                                             </div>
                                         )}
+
+                                        {/* Bottom message */}
                                         <div style={{ textAlign: 'center', borderTop: '2px dashed #f1f5f9', paddingTop: '16px', marginTop: '16px' }}>
                                             <div className="font-black text-red-500" style={{ fontSize: '20px', marginBottom: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
                                                 <Icon name="Heart" size={18} /> ขอบคุณครับ <Icon name="Heart" size={18} />
                                             </div>
-                                            <p className="font-bold text-slate-300 uppercase" style={{ fontSize: '8px', letterSpacing: '0.25em', marginTop: '6px' }}>Tasty • Fresh • Best Quality</p>
+                                            <p className="font-bold text-slate-300 uppercase" style={{ fontSize: '8px', letterSpacing: '0.25em', marginTop: '6px', marginBottom: 0 }}>Tasty • Fresh • Best Quality</p>
                                         </div>
                                         <div className="receipt-zigzag"></div>
                                     </div>
@@ -1179,7 +1401,7 @@
                         </div>
                     )}
 
-                    {/* ====== CUSTOM CONFIRM MODAL ====== */}
+                    {/* ====== CUSTOM CUSTOM CONFIRM MODAL ====== */}
                     {confirmModal && (
                         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[200] flex items-center justify-center p-6">
                             <div className="bg-white w-full max-w-xs rounded-[2rem] shadow-2xl p-7 text-center animate-in">
