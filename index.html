@@ -12,6 +12,7 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
     
     <style>
         body { font-family: 'Anuphan', sans-serif; -webkit-tap-highlight-color: transparent; background-color: #f8fafc; color: #1e293b; margin: 0; }
@@ -21,14 +22,27 @@
         .animate-in { animation: fadeIn 0.3s ease-out forwards; }
         .active-scale:active { transform: scale(0.96); transition: transform 0.1s; }
         
-        /* Receipt UI Optimization */
-        .receipt-print-area { background: white; width: 450px; padding: 60px 45px; position: relative; border-top: 15px solid #b91c1c; margin: 0 auto; box-sizing: border-box; }
+        /* Receipt UI - Responsive */
+        .receipt-print-area { background: white; width: 100%; max-width: 400px; padding: 32px 22px; position: relative; border-top: 10px solid #b91c1c; margin: 0 auto; box-sizing: border-box; }
         .receipt-zigzag { position: absolute; bottom: -12px; left: 0; width: 100%; height: 12px; background: linear-gradient(-135deg, white 6px, transparent 0), linear-gradient(135deg, white 6px, transparent 0); background-size: 12px 12px; }
-        .dashed-line { border-top: 2px dashed #cbd5e1; margin: 20px 0; width: 100%; }
+        .dashed-line { border-top: 2px dashed #cbd5e1; margin: 14px 0; width: 100%; }
         
         #app-loading { display: flex; align-items: center; justify-content: center; height: 100vh; flex-direction: column; gap: 1rem; color: #b91c1c; font-weight: 800; }
         .spinner { width: 40px; height: 40px; border: 4px solid #f3f3f3; border-top: 4px solid #b91c1c; border-radius: 50%; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* Category scroll offset */
+        [id^="cat-"] { scroll-margin-top: 200px; }
+
+        /* Receipt scroll box for cleaner checkout page */
+        .receipt-preview-container {
+            max-height: 380px;
+            overflow-y: auto;
+            border-radius: 2rem;
+            border: 1px solid #e2e8f0;
+            background: white;
+            box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.05);
+        }
     </style>
 </head>
 <body>
@@ -56,7 +70,13 @@
             CheckCircle2: '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
             Heart: '<path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/>',
             PlusCircle: '<circle cx="12" cy="12" r="10"/><path d="M8 12h8"/><path d="M12 8v8"/>',
-            Star: '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>'
+            Star: '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>',
+            Pencil: '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>',
+            X: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
+            Check: '<polyline points="20 6 9 17 4 12"/>',
+            RefreshCw: '<polyline points="1 4 1 10 7 10"/><polyline points="23 20 23 14 17 14"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/>',
+            TrendingUp: '<polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>',
+            Calendar: '<rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/>'
         };
 
         const Icon = ({ name, size = 24, className = "" }) => (
@@ -65,7 +85,7 @@
 
         const CURRY_OPTIONS = ['น้ำยากะทิ', 'น้ำยาป่า', 'แกงเขียวหวาน', 'น้ำเงี้ยว', 'น้ำพริก', 'แกงไตปลา'];
 
-        const MENU = {
+        const DEFAULT_MENU = {
             khanomJeenRad: [
                 { id: 'kjr_kathi', name: 'ขนมจีน (ราดกะทิ)', price: 40, category: 'ขนมจีนราดน้ำ' },
                 { id: 'kjr_pa', name: 'ขนมจีน (ราดน้ำยาป่า)', price: 40, category: 'ขนมจีนราดน้ำ' },
@@ -124,6 +144,11 @@
             ]
         };
 
+        // --- Supabase Config ---
+        const SUPABASE_URL = "https://jnegnwwoprpnazpmchiw.supabase.co";
+        const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpuZWdud3dvcHJwbmF6cG1jaGl3Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA4NjgxOTAsImV4cCI6MjA5NjQ0NDE5MH0.z3p8aCQ4MBcP6b5MeBxmXBV1ESzYk3C6GcGKDbXy8vI";
+        const supabase = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
+
         const App = () => {
             const [tables, setTables] = useState(() => JSON.parse(localStorage.getItem('mb_pos_v_final_1') || '{}'));
             const [activeTable, setActiveTable] = useState(null);
@@ -136,13 +161,274 @@
             const [showCustomForm, setShowCustomForm] = useState(false);
             const [fourGirlsModal, setFourGirlsModal] = useState(false);
             const [tempCurries, setTempCurries] = useState([]);
+            const [orderId] = useState(() => Math.floor(1000 + Math.random() * 9000));
+            const [confirmModal, setConfirmModal] = useState(null);
+            const showConfirm = (msg, onOk) => setConfirmModal({ message: msg, onConfirm: onOk });
+
+            // Supabase integration states
+            const [isOnline, setIsOnline] = useState(false);
+            const [isDbLoading, setIsDbLoading] = useState(true);
+
+            // Daily sales dashboard states
+            const [showSalesSummary, setShowSalesSummary] = useState(false);
+            const [salesData, setSalesData] = useState([]);
+            const [salesDate, setSalesDate] = useState(() => new Date().toISOString().split('T')[0]);
+            const [salesLoading, setSalesLoading] = useState(false);
+            const [selectedReceiptForView, setSelectedReceiptForView] = useState(null);
+
+            // Menu management states
+            const [menu, setMenu] = useState(() => JSON.parse(localStorage.getItem('mb_pos_menu_v2') || 'null') || DEFAULT_MENU);
+            const [showMenuManager, setShowMenuManager] = useState(false);
+            const [editingItemId, setEditingItemId] = useState(null);
+            const [editForm, setEditForm] = useState({ name: '', price: '' });
+            const [addingToCategory, setAddingToCategory] = useState(null);
+            const [newItemForm, setNewItemForm] = useState({ name: '', price: '' });
+            const [showAddCategory, setShowAddCategory] = useState(false);
+            const [newCatName, setNewCatName] = useState('');
+            const [activeTab, setActiveTab] = useState(null);
             
             const receiptRef = useRef(null);
+            const historyReceiptRef = useRef(null);
 
+            // Fetch from database on startup
+            useEffect(() => {
+                const initDb = async () => {
+                    if (!supabase) {
+                        setIsOnline(false);
+                        setIsDbLoading(false);
+                        return;
+                    }
+                    try {
+                        // Fetch menu
+                        const { data: menuData, error: menuErr } = await supabase
+                            .from('pos_menu')
+                            .select('*')
+                            .order('category_key', { ascending: true })
+                            .order('item_order', { ascending: true });
+
+                        if (menuErr) throw menuErr;
+                        setIsOnline(true);
+
+                        // If DB menu is empty, upload default menu items
+                        if (!menuData || menuData.length === 0) {
+                            const itemsToInsert = [];
+                            Object.entries(DEFAULT_MENU).forEach(([catKey, items]) => {
+                                items.forEach((item, idx) => {
+                                    itemsToInsert.push({
+                                        id: item.id,
+                                        category_key: catKey,
+                                        category_name: item.category,
+                                        name: item.name,
+                                        price: item.price,
+                                        is_special: !!item.isSpecial,
+                                        item_order: idx
+                                    });
+                                });
+                            });
+                            await supabase.from('pos_menu').insert(itemsToInsert);
+                            setMenu(DEFAULT_MENU);
+                        } else {
+                            const mappedMenu = {};
+                            menuData.forEach(item => {
+                                if (!mappedMenu[item.category_key]) mappedMenu[item.category_key] = [];
+                                mappedMenu[item.category_key].push({
+                                    id: item.id,
+                                    name: item.name,
+                                    price: Number(item.price),
+                                    category: item.category_name,
+                                    isSpecial: item.is_special
+                                });
+                            });
+                            setMenu(mappedMenu);
+                        }
+
+                        // Load active tables/carts
+                        const { data: tablesData, error: tablesErr } = await supabase
+                            .from('pos_tables')
+                            .select('*');
+                        if (tablesErr) throw tablesErr;
+
+                        const mappedTables = {};
+                        tablesData.forEach(t => {
+                            mappedTables[t.table_number] = t.items;
+                        });
+                        setTables(mappedTables);
+                    } catch (e) {
+                        console.error("Failed to connect to Supabase database:", e);
+                        setIsOnline(false);
+                    } finally {
+                        setIsDbLoading(false);
+                    }
+                };
+                initDb();
+            }, []);
+
+            // LocalStorage sync as fallback
             useEffect(() => { localStorage.setItem('mb_pos_v_final_1', JSON.stringify(tables)); }, [tables]);
+            useEffect(() => { localStorage.setItem('mb_pos_menu_v2', JSON.stringify(menu)); }, [menu]);
 
             const getTableTotal = (num) => (tables[num] || []).reduce((sum, item) => sum + (item.price * item.quantity), 0);
+            const total = getTableTotal(activeTable);
+            const change = receivedAmount ? parseFloat(receivedAmount) - total : 0;
 
+            // --- Database Sync for Active Orders ---
+            const updateTableOnSupabase = async (tableNum, newItems) => {
+                if (isOnline && supabase) {
+                    try {
+                        await supabase
+                            .from('pos_tables')
+                            .upsert({ table_number: tableNum, items: newItems, updated_at: new Date() });
+                    } catch (e) {
+                        console.error("Failed to sync table with Supabase:", e);
+                    }
+                }
+            };
+
+            // --- Menu Management Functions ---
+            const startEdit = (item) => {
+                setEditingItemId(item.id);
+                setEditForm({ name: item.name, price: item.price.toString() });
+            };
+            const saveEdit = async (catKey) => {
+                if (!editForm.name || !editForm.price) return;
+                const targetId = editingItemId;
+                const newName = editForm.name;
+                const newPrice = parseFloat(editForm.price);
+
+                setMenu(prev => ({
+                    ...prev,
+                    [catKey]: prev[catKey].map(item =>
+                        item.id === targetId ? { ...item, name: newName, price: newPrice } : item
+                    )
+                }));
+                setEditingItemId(null);
+
+                if (isOnline && supabase) {
+                    try {
+                        await supabase
+                            .from('pos_menu')
+                            .update({ name: newName, price: newPrice })
+                            .eq('id', targetId);
+                    } catch (e) {
+                        console.error("Supabase update error:", e);
+                    }
+                }
+            };
+            const deleteMenuItem = async (catKey, itemId) => {
+                showConfirm('ลบรายการนี้?', async () => {
+                    setMenu(prev => {
+                        const newItems = prev[catKey].filter(item => item.id !== itemId);
+                        if (newItems.length === 0) {
+                            const copy = { ...prev };
+                            delete copy[catKey];
+                            return copy;
+                        }
+                        return { ...prev, [catKey]: newItems };
+                    });
+
+                    if (isOnline && supabase) {
+                        try {
+                            await supabase
+                                .from('pos_menu')
+                                .delete()
+                                .eq('id', itemId);
+                        } catch (e) {
+                            console.error("Supabase delete error:", e);
+                        }
+                    }
+                });
+            };
+            const addNewItem = async (catKey) => {
+                if (!newItemForm.name || !newItemForm.price) return;
+                const catName = menu[catKey][0]?.category || catKey;
+                const newId = `m_${Date.now()}`;
+                const newPrice = parseFloat(newItemForm.price);
+                const newName = newItemForm.name;
+
+                setMenu(prev => ({
+                    ...prev,
+                    [catKey]: [...prev[catKey], { id: newId, name: newName, price: newPrice, category: catName }]
+                }));
+                setNewItemForm({ name: '', price: '' });
+                setAddingToCategory(null);
+
+                if (isOnline && supabase) {
+                    try {
+                        await supabase.from('pos_menu').insert({
+                            id: newId,
+                            category_key: catKey,
+                            category_name: catName,
+                            name: newName,
+                            price: newPrice,
+                            is_special: false,
+                            item_order: menu[catKey].length
+                        });
+                    } catch (e) {
+                        console.error("Supabase insert error:", e);
+                    }
+                }
+            };
+            const addNewCategory = async () => {
+                if (!newCatName || !newItemForm.name || !newItemForm.price) return;
+                const catKey = `cat_${Date.now()}`;
+                const newId = `m_${Date.now()}`;
+                const newPrice = parseFloat(newItemForm.price);
+                const newName = newItemForm.name;
+                const catName = newCatName;
+
+                setMenu(prev => ({
+                    ...prev,
+                    [catKey]: [{ id: newId, name: newName, price: newPrice, category: catName }]
+                }));
+                setNewCatName('');
+                setNewItemForm({ name: '', price: '' });
+                setShowAddCategory(false);
+
+                if (isOnline && supabase) {
+                    try {
+                        await supabase.from('pos_menu').insert({
+                            id: newId,
+                            category_key: catKey,
+                            category_name: catName,
+                            name: newName,
+                            price: newPrice,
+                            is_special: false,
+                            item_order: 0
+                        });
+                    } catch (e) {
+                        console.error("Supabase add category error:", e);
+                    }
+                }
+            };
+            const resetMenu = () => {
+                showConfirm('รีเซ็ตเมนูทั้งหมดกลับเป็นค่าเริ่มต้น?', async () => {
+                    setMenu(DEFAULT_MENU);
+                    if (isOnline && supabase) {
+                        try {
+                            await supabase.from('pos_menu').delete().neq('id', 'dummy');
+                            const itemsToInsert = [];
+                            Object.entries(DEFAULT_MENU).forEach(([catKey, items]) => {
+                                items.forEach((item, idx) => {
+                                    itemsToInsert.push({
+                                        id: item.id,
+                                        category_key: catKey,
+                                        category_name: item.category,
+                                        name: item.name,
+                                        price: item.price,
+                                        is_special: !!item.isSpecial,
+                                        item_order: idx
+                                    });
+                                });
+                            });
+                            await supabase.from('pos_menu').insert(itemsToInsert);
+                        } catch (e) {
+                            console.error("Supabase reset error:", e);
+                        }
+                    }
+                });
+            };
+
+            // --- Order Functions ---
             const addItem = (item, details = null) => {
                 if (item.id === 'kj_4girls' && !details) {
                     setTempCurries([]);
@@ -156,6 +442,7 @@
                     let newList;
                     if (idx > -1) { newList = [...list]; newList[idx].quantity += 1; }
                     else { newList = [...list, { ...item, entryId, details, quantity: 1 }]; }
+                    updateTableOnSupabase(activeTable, newList);
                     return { ...prev, [activeTable]: newList };
                 });
             };
@@ -172,58 +459,156 @@
                     const idx = list.findIndex(i => i.entryId === id);
                     if (idx === -1) return prev;
                     let next = [...list];
-                    if (next[idx].quantity > 1) { next[idx].quantity -= 1; return { ...prev, [activeTable]: next }; }
-                    return { ...prev, [activeTable]: list.filter(i => i.entryId !== id) };
+                    if (next[idx].quantity > 1) { 
+                        next[idx].quantity -= 1; 
+                        updateTableOnSupabase(activeTable, next);
+                        return { ...prev, [activeTable]: next }; 
+                    }
+                    const newList = list.filter(i => i.entryId !== id);
+                    updateTableOnSupabase(activeTable, newList);
+                    return { ...prev, [activeTable]: newList };
                 });
             };
 
+            // --- Confirm Order & Clear Table ---
+            const payAndClearTable = async () => {
+                const orderItems = tables[activeTable] || [];
+                if (orderItems.length === 0) return;
+
+                const saleRecord = {
+                    table_number: activeTable,
+                    order_id: `#ID-${orderId}`,
+                    items: orderItems,
+                    total: total,
+                    payment_method: paymentMethod,
+                    received_amount: paymentMethod === 'cash' ? (parseFloat(receivedAmount) || total) : null,
+                    change_amount: paymentMethod === 'cash' ? (receivedAmount ? parseFloat(receivedAmount) - total : 0) : null,
+                    created_at: new Date().toISOString()
+                };
+
+                // Save to Supabase Sales
+                if (isOnline && supabase) {
+                    try {
+                        await supabase.from('pos_sales').insert(saleRecord);
+                    } catch (e) {
+                        console.error("Supabase record sale error:", e);
+                    }
+                } else {
+                    const localSales = JSON.parse(localStorage.getItem('mb_pos_local_sales') || '[]');
+                    localSales.push(saleRecord);
+                    localStorage.setItem('mb_pos_local_sales', JSON.stringify(localSales));
+                }
+
+                // Clear table in Supabase
+                await updateTableOnSupabase(activeTable, []);
+
+                // Clear locally
+                setTables(prev => {
+                    const nextTables = { ...prev };
+                    delete nextTables[activeTable];
+                    return nextTables;
+                });
+                setView('table-selection');
+                setActiveTable(null);
+            };
+
+            // --- Daily Sales Summary Loader ---
+            const fetchSalesForDate = async (dateStr) => {
+                setSalesLoading(true);
+                const startOfDay = `${dateStr}T00:00:00.000Z`;
+                const endOfDay = `${dateStr}T23:59:59.999Z`;
+
+                if (isOnline && supabase) {
+                    try {
+                        const { data, error } = await supabase
+                            .from('pos_sales')
+                            .select('*')
+                            .gte('created_at', startOfDay)
+                            .lte('created_at', endOfDay)
+                            .order('created_at', { ascending: false });
+
+                        if (error) throw error;
+                        setSalesData(data || []);
+                    } catch (e) {
+                        console.error("Error fetching sales data:", e);
+                    } finally {
+                        setSalesLoading(false);
+                    }
+                } else {
+                    const localSales = JSON.parse(localStorage.getItem('mb_pos_local_sales') || '[]');
+                    const filtered = localSales.filter(s => {
+                        const sDate = s.created_at.split('T')[0];
+                        return sDate === dateStr;
+                    });
+                    setSalesData(filtered);
+                    setSalesLoading(false);
+                }
+            };
+
+            useEffect(() => {
+                if (showSalesSummary) {
+                    fetchSalesForDate(salesDate);
+                }
+            }, [salesDate, showSalesSummary]);
+
+            // --- Receipt Downloader ---
             const saveAndDownload = async () => {
                 if (!receiptRef.current) return;
                 setIsProcessing(true);
                 try {
-                    const canvas = await html2canvas(receiptRef.current, { scale: 2.5, backgroundColor: '#ffffff', useCORS: true });
+                    const el = receiptRef.current;
+                    const origMaxW = el.style.maxWidth;
+                    const origW = el.style.width;
+                    el.style.maxWidth = 'none';
+                    el.style.width = '420px';
+                    const canvas = await html2canvas(el, { scale: 2.5, backgroundColor: '#ffffff', useCORS: true });
+                    el.style.maxWidth = origMaxW || '';
+                    el.style.width = origW || '';
                     const link = document.createElement('a');
                     link.download = `Receipt-T${activeTable}-${Date.now()}.png`;
                     link.href = canvas.toDataURL("image/png");
                     link.click();
-                } catch (e) { alert("Error!"); } finally { setIsProcessing(false); }
+                } catch (e) { console.error(e); } finally { setIsProcessing(false); }
             };
 
-            const generateQR = (amount) => {
-                const formatID = (id, val) => id + val.length.toString().padStart(2, '0') + val;
-                let p = '000201010212' + formatID('29', formatID('00', 'A000000677010111') + formatID('01', '3897208520')) + '5303764';
-                if (amount > 0) p += formatID('54', parseFloat(amount).toFixed(2));
-                p += '5802TH6304';
-                const crc16 = (d) => {
-                    let c = 0xFFFF;
-                    for (let i = 0; i < d.length; i++) {
-                        let x = ((c >> 8) ^ d.charCodeAt(i)) & 0xFF; x ^= x >> 4;
-                        c = ((c << 8) ^ (x << 12) ^ (x << 5) ^ x) & 0xFFFF;
-                    }
-                    return c.toString(16).toUpperCase().padStart(4, '0');
-                };
-                return p + crc16(p);
+            const scrollToCategory = (key) => {
+                setActiveTab(key);
+                const el = document.getElementById(`cat-${key}`);
+                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
             };
 
-            const total = getTableTotal(activeTable);
-            const change = receivedAmount ? parseFloat(receivedAmount) - total : 0;
+            if (isDbLoading) {
+                return (
+                    <div id="app-loading">
+                        <div class="spinner"></div>
+                        <p>กำลังเตรียมข้อมูลและเชื่อมต่อ Supabase...</p>
+                    </div>
+                );
+            }
+
+            const menuKeys = Object.keys(menu);
 
             return (
-                <div className="min-h-screen max-w-md mx-auto bg-[#f8fafc] shadow-2xl">
+                <div className="min-h-screen max-w-md mx-auto bg-[#f8fafc] shadow-2xl relative">
                     {/* Header */}
                     <header className="bg-white border-b border-slate-100 p-4 sticky top-0 z-50 flex justify-between items-center shadow-sm">
                         <div onClick={() => { setView('table-selection'); setActiveTable(null); }} className="cursor-pointer active-scale">
                             <h1 className="text-xl font-black text-red-700 flex items-center gap-2 tracking-tighter">
                                 <Icon name="Utensils" size={20} className="text-red-600" /> แม่บุญส่ง <span className="text-[10px] bg-red-100 px-2 py-0.5 rounded-full font-bold">POS</span>
+                                <span className={`w-2.5 h-2.5 rounded-full inline-block ml-1 ${isOnline ? 'bg-green-500 animate-pulse' : 'bg-amber-500'}`} title={isOnline ? "Supabase ออนไลน์" : "โหมดออฟไลน์"} />
                             </h1>
                         </div>
-                        {view !== 'table-selection' && <button onClick={() => setView('table-selection')} className="p-2 bg-slate-100 rounded-xl active-scale"><Icon name="LayoutGrid" size={22} /></button>}
+                        <div className="flex items-center gap-2">
+                            <button onClick={() => setShowSalesSummary(true)} className="p-2 bg-emerald-50 text-emerald-600 rounded-xl active-scale" title="สรุปยอดขายรายวัน"><Icon name="TrendingUp" size={18} /></button>
+                            <button onClick={() => setShowMenuManager(true)} className="p-2 bg-amber-50 text-amber-600 rounded-xl active-scale" title="จัดการเมนู"><Icon name="Pencil" size={18} /></button>
+                            {view !== 'table-selection' && <button onClick={() => setView('table-selection')} className="p-2 bg-slate-100 rounded-xl active-scale"><Icon name="LayoutGrid" size={22} /></button>}
+                        </div>
                     </header>
 
                     <main className="p-4">
                         {view === 'table-selection' ? (
                             <div className="animate-in pt-4">
-                                <h2 className="text-xl font-black mb-8 px-2 flex items-center gap-2"><Icon name="Users" size={20} className="text-red-600" /> เลือกลูกค้า</h2>
+                                <h2 className="text-xl font-black mb-8 px-2 flex items-center gap-2"><Icon name="LayoutGrid" size={20} className="text-red-600" /> เลือกลูกค้า</h2>
                                 <div className="grid grid-cols-3 gap-5">
                                     {[1,2,3,4,5,6,7,8,9].map(num => (
                                         <button key={num} onClick={() => { setActiveTable(num); setView('order-entry'); }} 
@@ -236,11 +621,26 @@
                             </div>
                         ) : view === 'order-entry' ? (
                             <div className="animate-in pb-32">
-                                <div className="bg-red-700 text-white p-6 rounded-[2.5rem] flex justify-between items-center mb-6 shadow-xl shadow-red-100">
+                                {/* Table header card */}
+                                <div className="bg-red-700 text-white p-6 rounded-[2.5rem] flex justify-between items-center mb-4 shadow-xl shadow-red-100">
                                     <div className="flex items-center gap-4"><div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center font-black text-2xl">{activeTable}</div><h2 className="text-xl font-black leading-none">โต๊ะ {activeTable}</h2></div>
                                     <p className="text-3xl font-black">฿{total}</p>
                                 </div>
 
+                                {/* Category Tabs */}
+                                <div className="flex gap-2 overflow-x-auto no-scrollbar pb-2 mb-4 sticky top-[65px] z-30 bg-[#f8fafc] pt-2 -mx-4 px-4">
+                                    {menuKeys.map(key => {
+                                        const catName = menu[key][0]?.category || key;
+                                        return (
+                                            <button key={key} onClick={() => scrollToCategory(key)}
+                                                className={`whitespace-nowrap px-4 py-2.5 rounded-2xl text-xs font-black transition-all active-scale shadow-sm ${activeTab === key ? 'bg-red-700 text-white shadow-md' : 'bg-white text-slate-500 border border-slate-100'}`}>
+                                                {catName}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+
+                                {/* Custom item */}
                                 <div className="mb-6 bg-white p-4 rounded-3xl border-2 border-indigo-100">
                                     <button onClick={() => setShowCustomForm(!showCustomForm)} className="w-full flex items-center justify-center gap-2 font-bold text-indigo-700 active-scale py-1">
                                         <Icon name="PlusCircle" size={18} /> {showCustomForm ? 'ยกเลิกรายการพิเศษ' : 'เพิ่มรายการอื่น / ตั้งราคาเอง'}
@@ -254,22 +654,28 @@
                                     )}
                                 </div>
 
+                                {/* Menu Items by Category */}
                                 <div className="space-y-10">
-                                    {Object.entries(MENU).map(([key, items]) => (
-                                        <div key={key}>
-                                            <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 border-l-4 border-red-500 pl-3 leading-none">{items[0].category}</h3>
-                                            <div className="grid gap-3">
-                                                {items.map(item => (
-                                                    <div key={item.id} onClick={() => addItem(item)} className="bg-white p-4 rounded-3xl flex justify-between items-center border border-slate-100 shadow-sm active-scale">
-                                                        <div className="flex-1 pr-2"><h4 className="font-bold text-slate-800 text-lg leading-tight">{item.name}</h4><div className="flex items-center gap-2 mt-1"><span className="text-red-600 font-black text-lg">฿{item.price}</span>{item.isSpecial && <span className="text-[9px] bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full font-black uppercase">แนะนำ</span>}</div></div>
-                                                        <div className="w-11 h-11 bg-slate-50 text-red-600 rounded-2xl flex items-center justify-center shadow-inner"><Icon name="Plus" size={24} /></div>
-                                                    </div>
-                                                ))}
+                                    {menuKeys.map(key => {
+                                        const items = menu[key];
+                                        if (!items || items.length === 0) return null;
+                                        return (
+                                            <div key={key} id={`cat-${key}`}>
+                                                <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 border-l-4 border-red-500 pl-3 leading-none">{items[0].category}</h3>
+                                                <div className="grid gap-3">
+                                                    {items.map(item => (
+                                                        <div key={item.id} onClick={() => addItem(item)} className="bg-white p-4 rounded-3xl flex justify-between items-center border border-slate-100 shadow-sm active-scale">
+                                                            <div className="flex-1 pr-2"><h4 className="font-bold text-slate-800 text-lg leading-tight">{item.name}</h4><div className="flex items-center gap-2 mt-1"><span className="text-red-600 font-black text-lg">฿{item.price}</span>{item.isSpecial && <span className="text-[9px] bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full font-black uppercase">แนะนำ</span>}</div></div>
+                                                            <div className="w-11 h-11 bg-slate-50 text-red-600 rounded-2xl flex items-center justify-center shadow-inner"><Icon name="Plus" size={24} /></div>
+                                                        </div>
+                                                    ))}
+                                                </div>
                                             </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
 
+                                {/* Current order items */}
                                 {(tables[activeTable] || []).length > 0 && (
                                     <div className="mt-12 bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm animate-in">
                                         <h3 className="font-black text-sm mb-4">รายการปัจจุบัน</h3>
@@ -291,15 +697,24 @@
                                     </div>
                                 )}
 
+                                {/* Bottom bar */}
                                 <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/90 backdrop-blur-xl border-t z-40">
                                     <div className="max-w-md mx-auto flex gap-3">
-                                        <button onClick={() => { if(confirm('ล้างรายการทั้งหมด?')) { setTables({...tables, [activeTable]: []}); } }} className="p-5 bg-slate-100 text-slate-400 rounded-3xl active-scale"><Icon name="Trash2" size={24} /></button>
+                                        <button onClick={() => showConfirm('ล้างรายการทั้งหมดของโต๊ะนี้?', () => {
+                                            setTables(prev => {
+                                                const next = { ...prev, [activeTable]: [] };
+                                                updateTableOnSupabase(activeTable, []);
+                                                return next;
+                                            });
+                                        })} className="p-5 bg-slate-100 text-slate-400 rounded-3xl active-scale"><Icon name="Trash2" size={24} /></button>
                                         <button onClick={() => { setReceivedAmount(''); setView('checkout'); }} disabled={total === 0} className="flex-1 py-5 bg-red-700 text-white rounded-[2rem] font-black text-xl shadow-xl active-scale disabled:bg-slate-200">ดูบิล / คิดเงิน</button>
                                     </div>
                                 </div>
                             </div>
+
                         ) : (
-                            <div className="animate-in pb-20">
+                            /* ====== CHECKOUT VIEW ====== */
+                            <div className="animate-in pb-8">
                                 <div className="flex items-center gap-4 mb-6">
                                     <button onClick={() => setView('order-entry')} className="p-3 bg-white border border-slate-100 rounded-2xl text-slate-400 active-scale"><Icon name="ChevronLeft" size={24} /></button>
                                     <h2 className="text-2xl font-black">คิดเงิน โต๊ะ {activeTable}</h2>
@@ -311,96 +726,118 @@
                                 </div>
 
                                 {paymentMethod === 'cash' && (
-                                    <div className="bg-white p-6 rounded-[2.5rem] border border-red-100 mb-6 shadow-sm">
-                                        <p className="text-[10px] font-bold text-slate-400 uppercase text-center mb-2 tracking-widest uppercase font-black">ยอดรับเงิน (บาท)</p>
-                                        <input type="number" value={receivedAmount} onChange={e => setReceivedAmount(e.target.value)} placeholder="0.00" className="w-full text-5xl font-black text-center text-red-600 outline-none bg-slate-50 py-4 rounded-2xl mb-4" />
-                                        {change >= 0 && (
-                                            <div className="bg-green-50 p-4 rounded-2xl text-center border border-green-100 animate-in">
+                                    <div className="bg-white p-5 rounded-3xl border border-slate-100 mb-6 shadow-sm animate-in">
+                                        <p className="text-[10px] font-black text-slate-400 uppercase text-center mb-2 tracking-widest">ยอดรับเงิน (บาท)</p>
+                                        <input type="number" value={receivedAmount} onChange={e => setReceivedAmount(e.target.value)} placeholder="0.00" className="w-full text-4xl font-black text-center text-red-600 outline-none bg-slate-50 py-3 rounded-2xl mb-3" />
+                                        {receivedAmount && change >= 0 && (
+                                            <div className="bg-green-50 p-3 rounded-2xl text-center border border-green-100 animate-in">
                                                 <p className="text-[10px] font-bold text-green-600 uppercase">เงินทอน</p>
-                                                <p className="text-3xl font-black text-green-700">฿{change.toFixed(2)}</p>
+                                                <p className="text-2xl font-black text-green-700">฿{change.toFixed(2)}</p>
                                             </div>
                                         )}
                                     </div>
                                 )}
 
-                                {/* --- PROFESSIONAL RECEIPT DESIGN (No Overlap) --- */}
-                                <div className="receipt-print-area receipt-font mb-10 shadow-2xl" ref={receiptRef}>
-                                    <div className="flex flex-col items-center gap-2 mb-8">
-                                        <div className="text-center">
-                                            <h3 className="text-[52px] font-black text-red-700 leading-none tracking-tighter" style={{ marginBottom: '5px' }}>แม่บุญส่ง</h3>
-                                            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.4em]">THAI NOODLE SPECIALIST</p>
+                                {paymentMethod === 'transfer' && (
+                                    <div className="bg-gradient-to-br from-blue-600 to-blue-700 p-6 rounded-3xl mb-6 shadow-xl text-center animate-in">
+                                        <p className="text-blue-200 font-bold uppercase text-[10px] tracking-widest mb-4">โอนเงินเข้าบัญชี (ไม่มี QR Code)</p>
+                                        <div className="bg-white/15 backdrop-blur-sm rounded-2xl p-5 mb-4">
+                                            <p className="text-white/60 font-bold text-[10px] uppercase tracking-widest mb-2">เลขที่บัญชี</p>
+                                            <p className="text-white font-black text-3xl tracking-wider select-all" style={{letterSpacing: '0.12em'}}>389-7-20852-0</p>
                                         </div>
-                                        <div className="dashed-line" style={{ margin: '15px 0' }}></div>
-                                        <div className="w-full flex justify-between items-center font-bold text-[14px] text-slate-900">
-                                            <span className="bg-slate-900 text-white px-4 py-1 rounded-full uppercase tracking-widest">TABLE {activeTable}</span>
-                                            <span className="opacity-40">#ID-{Math.floor(1000 + Math.random() * 9000)}</span>
+                                        <p className="text-white font-black text-lg">ธนาคารกรุงเทพ</p>
+                                        <p className="text-blue-200 font-bold text-sm mt-1">ชื่อบัญชี: คุณแม่บุญส่ง</p>
+                                        <div className="mt-4 bg-white/10 rounded-xl py-3 px-4">
+                                            <p className="text-blue-100 font-bold text-xs">ยอดโอน</p>
+                                            <p className="text-white font-black text-2xl">฿{total}</p>
                                         </div>
-                                        <p className="w-full text-[12px] text-slate-400 text-left mt-2">{new Date().toLocaleString('th-TH')}</p>
                                     </div>
+                                )}
 
-                                    <div className="space-y-6 mb-10 min-h-[150px]">
-                                        <div className="flex justify-between text-[12px] font-black text-slate-300 border-b-2 border-slate-100 pb-2 uppercase tracking-widest"><span>รายการอาหาร</span><span>รวม (บาท)</span></div>
-                                        {(tables[activeTable] || []).map((item, i) => (
-                                            <div key={i} className="flex justify-between items-start text-[17px] gap-6">
-                                                <div className="flex-1">
-                                                    <p className="font-bold text-slate-800 leading-tight break-words">{item.name}</p>
-                                                    {item.details && <p className="text-[11px] text-red-500 font-bold mt-1.5 leading-tight">{item.details.join(', ')}</p>}
-                                                    <p className="text-[12px] text-slate-400 font-bold uppercase mt-1">฿{item.price} x {item.quantity}</p>
+                                {/* Receipt Box - Scrollable inside payment screen for neat UI */}
+                                <div className="bg-slate-100 p-4 rounded-[2.5rem] mb-6">
+                                    <p className="text-xs font-black text-slate-400 mb-3 text-center uppercase tracking-wider">ตัวอย่างบิลใบเสร็จ</p>
+                                    <div className="receipt-preview-container">
+                                        <div className="receipt-print-area receipt-font shadow-md" ref={receiptRef}>
+                                            <div className="text-center" style={{ marginBottom: '20px' }}>
+                                                <h3 className="font-black text-red-700 leading-none tracking-tighter" style={{ fontSize: '42px', marginBottom: '4px' }}>แม่บุญส่ง</h3>
+                                            </div>
+                                            <div className="dashed-line"></div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                                <span className="bg-slate-900 text-white rounded-full uppercase tracking-widest font-bold" style={{ fontSize: '11px', padding: '3px 12px' }}>TABLE {activeTable}</span>
+                                                <span className="text-slate-300 font-bold" style={{ fontSize: '11px' }}>#ID-{orderId}</span>
+                                            </div>
+                                            <p className="text-slate-400" style={{ fontSize: '10px', marginBottom: '16px' }}>{new Date().toLocaleString('th-TH')}</p>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #f1f5f9', paddingBottom: '6px', marginBottom: '12px' }}>
+                                                <span className="font-black text-slate-300 uppercase" style={{ fontSize: '9px', letterSpacing: '0.15em' }}>รายการอาหาร</span>
+                                                <span className="font-black text-slate-300 uppercase" style={{ fontSize: '9px', letterSpacing: '0.15em' }}>รวม</span>
+                                            </div>
+                                            <div style={{ marginBottom: '16px' }}>
+                                                {(tables[activeTable] || []).map((item, i) => (
+                                                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '10px' }}>
+                                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                                            <p className="font-bold text-slate-800" style={{ fontSize: '14px', lineHeight: '1.3', wordBreak: 'break-word' }}>{item.name}</p>
+                                                            {item.details && <p className="font-bold text-red-500" style={{ fontSize: '9px', marginTop: '2px', lineHeight: '1.3' }}>{item.details.join(', ')}</p>}
+                                                            <p className="font-bold text-slate-400 uppercase" style={{ fontSize: '10px', marginTop: '2px' }}>฿{item.price} x {item.quantity}</p>
+                                                        </div>
+                                                        <span className="font-black text-slate-900" style={{ fontSize: '16px', whiteSpace: 'nowrap' }}>฿{item.price * item.quantity}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                            <div className="dashed-line"></div>
+                                            <div style={{ marginBottom: '12px' }}>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                    <span className="font-bold text-slate-400 uppercase" style={{ fontSize: '10px', letterSpacing: '0.15em' }}>ชำระโดย</span>
+                                                    <span className="font-bold text-slate-800 uppercase" style={{ fontSize: '13px' }}>{paymentMethod === 'cash' ? 'เงินสด (CASH)' : 'เงินโอน (TRANSFER)'}</span>
                                                 </div>
-                                                <span className="font-black text-slate-900 text-xl">฿{item.price * item.quantity}</span>
+                                                {paymentMethod === 'cash' && receivedAmount && (
+                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f8fafc', paddingTop: '6px', marginTop: '6px' }}>
+                                                        <span className="text-slate-400" style={{ fontSize: '11px' }}>รับเงินมา:</span>
+                                                        <span className="text-slate-400" style={{ fontSize: '11px' }}>฿{parseFloat(receivedAmount).toFixed(2)}</span>
+                                                    </div>
+                                                )}
                                             </div>
-                                        ))}
-                                    </div>
-
-                                    <div className="dashed-line" style={{ margin: '20px 0' }}></div>
-                                    <div className="space-y-4 mb-10">
-                                        <div className="flex justify-between items-center text-slate-800 font-bold">
-                                            <span className="text-[13px] uppercase opacity-50 tracking-widest">ชำระโดย</span>
-                                            <span className="text-xl uppercase">{paymentMethod === 'cash' ? 'เงินสด (CASH)' : 'เงินโอน (QR)'}</span>
-                                        </div>
-                                        {paymentMethod === 'cash' && receivedAmount && (
-                                            <div className="flex justify-between items-center text-slate-400 text-sm italic border-t border-slate-50 pt-2">
-                                                <span>รับเงินมา:</span><span>฿{parseFloat(receivedAmount).toFixed(2)}</span>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '2px solid #f1f5f9', paddingTop: '12px' }}>
+                                                <span className="font-bold text-slate-400 uppercase" style={{ fontSize: '11px', letterSpacing: '0.15em' }}>ยอดสุทธิ</span>
+                                                <span className="font-black text-red-700" style={{ fontSize: '36px', lineHeight: 1 }}>฿{total}</span>
                                             </div>
-                                        )}
-                                        <div className="flex justify-between items-center pt-3 border-t-2 border-slate-50">
-                                            <span className="text-sm font-bold text-slate-400 uppercase tracking-widest">ยอดสุทธิ</span>
-                                            <span className="text-[44px] font-black text-red-700 leading-none">฿{total}</span>
-                                        </div>
-                                        {paymentMethod === 'cash' && change >= 0 && (
-                                            <div className="flex justify-between items-center pt-5 text-green-600 font-black border-t-2 border-dashed border-green-100">
-                                                <span className="text-sm uppercase tracking-widest">เงินทอน:</span><span className="text-[34px] leading-none underline decoration-4 decoration-green-100">฿{change.toFixed(2)}</span>
+                                            {paymentMethod === 'cash' && receivedAmount && change >= 0 && (
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '2px dashed #dcfce7', paddingTop: '10px', marginTop: '10px' }}>
+                                                    <span className="font-black text-green-600 uppercase" style={{ fontSize: '11px', letterSpacing: '0.15em' }}>เงินทอน:</span>
+                                                    <span className="font-black text-green-600" style={{ fontSize: '28px', lineHeight: 1 }}>฿{change.toFixed(2)}</span>
+                                                </div>
+                                            )}
+                                            {paymentMethod === 'transfer' && (
+                                                <div style={{ borderTop: '2px dashed #bfdbfe', paddingTop: '14px', marginTop: '14px', textAlign: 'center' }}>
+                                                    <p className="font-bold text-slate-400 uppercase" style={{ fontSize: '9px', letterSpacing: '0.15em', marginBottom: '4px' }}>โอนเข้าบัญชี</p>
+                                                    <p className="font-black text-blue-600" style={{ fontSize: '16px', letterSpacing: '0.1em' }}>389-7-20852-0</p>
+                                                    <p className="font-bold text-slate-400" style={{ fontSize: '9px', marginTop: '2px' }}>ธนาคารกรุงเทพ • คุณแม่บุญส่ง</p>
+                                                </div>
+                                            )}
+                                            <div style={{ textAlign: 'center', borderTop: '2px dashed #f1f5f9', paddingTop: '16px', marginTop: '16px' }}>
+                                                <div className="font-black text-red-500" style={{ fontSize: '20px', marginBottom: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                                                    <Icon name="Heart" size={18} /> ขอบคุณครับ <Icon name="Heart" size={18} />
+                                                </div>
+                                                <p className="font-bold text-slate-300 uppercase" style={{ fontSize: '8px', letterSpacing: '0.25em', marginTop: '6px' }}>Tasty • Fresh • Best Quality</p>
                                             </div>
-                                        )}
-                                    </div>
-                                    
-                                    {paymentMethod === 'transfer' && (
-                                        <div className="bg-slate-50 p-8 rounded-[2rem] border border-slate-100 text-center mb-10 animate-in">
-                                            <p className="text-[11px] font-bold text-slate-400 mb-3 uppercase tracking-widest">สแกนจ่ายผ่าน QR Code</p>
-                                            <img src={`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(generateQR(total))}`} className="w-48 h-48 mx-auto rounded-2xl mb-4 shadow-lg border-4 border-white" />
-                                            <p className="font-black text-blue-600 text-2xl tracking-tighter">389-7-20852-0</p>
-                                            <p className="text-[11px] font-bold text-slate-400 uppercase tracking-[0.2em] mt-1">ธนาคารกรุงเทพ • คุณแม่บุญส่ง</p>
+                                            <div className="receipt-zigzag"></div>
                                         </div>
-                                    )}
-
-                                    <div className="text-center pt-6 border-t-2 border-dashed border-slate-100">
-                                        <div className="flex items-center justify-center gap-3 text-red-500 font-black italic text-[24px] mb-2 leading-none">
-                                            <Icon name="Heart" size={24} fill="currentColor" /> ขอบคุณครับ <Icon name="Heart" size={24} fill="currentColor" />
-                                        </div>
-                                        <p className="text-[10px] font-bold text-slate-300 uppercase tracking-[0.3em] mt-3">Tasty • Fresh • Best Quality</p>
                                     </div>
-                                    <div className="receipt-zigzag"></div>
                                 </div>
 
-                                <div className="space-y-4 px-2">
-                                    <button onClick={saveAndDownload} disabled={isProcessing} className="w-full py-5 bg-slate-900 text-white rounded-[2.5rem] font-black text-xl shadow-xl active-scale flex items-center justify-center gap-3 transition-all"><Icon name="Download" size={24} /> {isProcessing ? "กำลังเซฟรูป..." : "โหลดบิลลงเครื่อง (ส่งไลน์)"}</button>
-                                    <button onClick={() => { if(confirm('ยืนยันจ่ายเงินและล้างโต๊ะ?')) { const n = {...tables}; delete n[activeTable]; setTables(n); setView('table-selection'); setActiveTable(null); } }} className="w-full py-5 bg-green-600 text-white rounded-[2.5rem] font-black text-2xl shadow-xl active-scale flex items-center justify-center gap-3 transition-all"><Icon name="CheckCircle2" size={32} /> จ่ายเงินและล้างโต๊ะ</button>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', padding: '0 4px' }}>
+                                    <button onClick={saveAndDownload} disabled={isProcessing} className="w-full py-4 bg-slate-900 text-white rounded-3xl font-black text-lg shadow-xl active-scale flex items-center justify-center gap-2">
+                                        <Icon name="Download" size={20} /> {isProcessing ? "กำลังเซฟรูป..." : "โหลดบิลลงเครื่อง (ส่งไลน์)"}
+                                    </button>
+                                    <button onClick={() => showConfirm('ยืนยันจ่ายเงินและล้างโต๊ะ?', payAndClearTable)} className="w-full py-4 bg-green-600 text-white rounded-3xl font-black text-xl shadow-xl active-scale flex items-center justify-center gap-2">
+                                        <Icon name="CheckCircle2" size={24} /> จ่ายเงินและล้างโต๊ะ
+                                    </button>
                                 </div>
                             </div>
                         )}
                     </main>
 
-                    {/* --- FOUR GIRLS MODAL --- */}
+                    {/* ====== FOUR GIRLS MODAL ====== */}
                     {fourGirlsModal && (
                         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[100] flex items-center justify-center p-4">
                             <div className="bg-white w-full max-w-sm rounded-[3rem] shadow-2xl overflow-hidden border-t-8 border-red-700 animate-in">
@@ -410,8 +847,349 @@
                                     <div className="grid grid-cols-2 gap-2 mb-10">{CURRY_OPTIONS.map(c => <button key={c} onClick={() => tempCurries.length < 4 && setTempCurries([...tempCurries, c])} className={`p-4 rounded-2xl border-2 text-xs font-black transition-all ${tempCurries.length >= 4 ? 'opacity-30' : 'bg-white border-slate-100 text-slate-600 active:bg-red-50 active:border-red-500'}`}>{c}</button>)}</div>
                                     <div className="flex gap-4">
                                         <button onClick={() => setTempCurries(tempCurries.slice(0, -1))} className="flex-1 py-5 bg-slate-100 rounded-2xl font-black text-slate-400 active-scale">ลบ</button>
-                                        <button disabled={tempCurries.length < 4} onClick={() => { addItem(MENU.specialSet.find(i => i.id === 'kj_4girls'), tempCurries); setFourGirlsModal(false); }} className={`flex-[2] py-5 rounded-2xl font-black text-xl shadow-lg transition-all ${tempCurries.length < 4 ? 'bg-slate-200 text-slate-400' : 'bg-red-700 text-white active-scale'}`}>เพิ่มลงโต๊ะ</button>
+                                        <button disabled={tempCurries.length < 4} onClick={() => { const fourGirls = (menu.specialSet || []).find(i => i.id === 'kj_4girls'); if (fourGirls) { addItem(fourGirls, tempCurries); } setFourGirlsModal(false); }} className={`flex-[2] py-5 rounded-2xl font-black text-xl shadow-lg transition-all ${tempCurries.length < 4 ? 'bg-slate-200 text-slate-400' : 'bg-red-700 text-white active-scale'}`}>เพิ่มลงโต๊ะ</button>
                                     </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ====== MENU MANAGEMENT MODAL ====== */}
+                    {showMenuManager && (
+                        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[100] flex items-start justify-center overflow-y-auto">
+                            <div className="bg-[#f8fafc] w-full max-w-md min-h-screen animate-in">
+                                {/* Modal Header */}
+                                <div className="sticky top-0 z-10 bg-white border-b border-slate-100 p-4 flex justify-between items-center shadow-sm">
+                                    <h2 className="text-lg font-black text-slate-800 flex items-center gap-2"><Icon name="Pencil" size={18} className="text-amber-500" /> จัดการเมนู</h2>
+                                    <button onClick={() => { setShowMenuManager(false); setEditingItemId(null); setAddingToCategory(null); setShowAddCategory(false); }} className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center active-scale"><Icon name="X" size={20} /></button>
+                                </div>
+
+                                <div className="p-4 space-y-6 pb-8">
+                                    {menuKeys.map(catKey => {
+                                        const items = menu[catKey];
+                                        if (!items || items.length === 0) return null;
+                                        const catName = items[0]?.category || catKey;
+                                        return (
+                                            <div key={catKey} className="bg-white rounded-3xl border border-slate-100 overflow-hidden shadow-sm">
+                                                {/* Category header */}
+                                                <div className="px-5 py-3 bg-slate-50 border-b border-slate-100 flex justify-between items-center">
+                                                    <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest">{catName}</h3>
+                                                    <span className="text-[10px] bg-slate-200 text-slate-500 px-2 py-0.5 rounded-full font-bold">{items.length} รายการ</span>
+                                                </div>
+
+                                                {/* Items */}
+                                                <div className="divide-y divide-slate-50">
+                                                    {items.map(item => (
+                                                        <div key={item.id} className="px-5 py-3">
+                                                            {editingItemId === item.id ? (
+                                                                /* Edit mode */
+                                                                <div className="space-y-2 animate-in">
+                                                                    <input type="text" value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} className="w-full p-2.5 bg-amber-50 rounded-xl outline-none font-bold text-sm border-2 border-amber-200 focus:border-amber-400" placeholder="ชื่อสินค้า" />
+                                                                    <input type="number" value={editForm.price} onChange={e => setEditForm({...editForm, price: e.target.value})} className="w-full p-2.5 bg-amber-50 rounded-xl outline-none font-black text-sm text-red-600 border-2 border-amber-200 focus:border-amber-400" placeholder="ราคา" />
+                                                                    <div className="flex gap-2">
+                                                                        <button onClick={() => setEditingItemId(null)} className="flex-1 py-2.5 bg-slate-100 rounded-xl font-bold text-slate-400 text-sm active-scale">ยกเลิก</button>
+                                                                        <button onClick={() => saveEdit(catKey)} className="flex-1 py-2.5 bg-green-600 text-white rounded-xl font-bold text-sm active-scale flex items-center justify-center gap-1"><Icon name="Check" size={14} /> บันทึก</button>
+                                                                    </div>
+                                                                </div>
+                                                            ) : (
+                                                                /* Display mode */
+                                                                <div className="flex justify-between items-center">
+                                                                    <div className="flex-1 min-w-0 pr-3">
+                                                                        <p className="font-bold text-slate-700 text-sm leading-tight truncate">{item.name}</p>
+                                                                        <p className="text-red-600 font-black text-sm mt-0.5">฿{item.price}</p>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <button onClick={() => startEdit(item)} className="w-8 h-8 bg-amber-50 text-amber-500 rounded-lg flex items-center justify-center active-scale"><Icon name="Pencil" size={13} /></button>
+                                                                        <button onClick={() => deleteMenuItem(catKey, item.id)} className="w-8 h-8 bg-red-50 text-red-400 rounded-lg flex items-center justify-center active-scale"><Icon name="Trash2" size={13} /></button>
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                </div>
+
+                                                {/* Add item to this category */}
+                                                {addingToCategory === catKey ? (
+                                                    <div className="p-4 bg-green-50 border-t border-green-100 space-y-2 animate-in">
+                                                        <input type="text" value={newItemForm.name} onChange={e => setNewItemForm({...newItemForm, name: e.target.value})} className="w-full p-2.5 bg-white rounded-xl outline-none font-bold text-sm border-2 border-green-200" placeholder="ชื่อสินค้าใหม่" />
+                                                        <input type="number" value={newItemForm.price} onChange={e => setNewItemForm({...newItemForm, price: e.target.value})} className="w-full p-2.5 bg-white rounded-xl outline-none font-black text-sm text-red-600 border-2 border-green-200" placeholder="ราคา" />
+                                                        <div className="flex gap-2">
+                                                            <button onClick={() => { setAddingToCategory(null); setNewItemForm({name:'',price:''}); }} className="flex-1 py-2.5 bg-white rounded-xl font-bold text-slate-400 text-sm active-scale border">ยกเลิก</button>
+                                                            <button onClick={() => addNewItem(catKey)} className="flex-1 py-2.5 bg-green-600 text-white rounded-xl font-bold text-sm active-scale flex items-center justify-center gap-1"><Icon name="Plus" size={14} /> เพิ่ม</button>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <button onClick={() => { setAddingToCategory(catKey); setNewItemForm({name:'',price:''}); }} className="w-full py-3 text-green-600 font-bold text-xs flex items-center justify-center gap-1 border-t border-slate-50 active-scale hover:bg-green-50 transition-colors">
+                                                        <Icon name="PlusCircle" size={14} /> เพิ่มรายการใหม่
+                                                    </button>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+
+                                    {/* Add new category */}
+                                    {showAddCategory ? (
+                                        <div className="bg-white rounded-3xl border-2 border-dashed border-indigo-200 p-5 space-y-3 animate-in">
+                                            <h4 className="text-xs font-black text-indigo-600 uppercase tracking-widest">เพิ่มหมวดหมู่ใหม่</h4>
+                                            <input type="text" value={newCatName} onChange={e => setNewCatName(e.target.value)} className="w-full p-2.5 bg-indigo-50 rounded-xl outline-none font-bold text-sm border-2 border-indigo-200" placeholder="ชื่อหมวดหมู่" />
+                                            <input type="text" value={newItemForm.name} onChange={e => setNewItemForm({...newItemForm, name: e.target.value})} className="w-full p-2.5 bg-indigo-50 rounded-xl outline-none font-bold text-sm border-2 border-indigo-200" placeholder="ชื่อสินค้าแรก" />
+                                            <input type="number" value={newItemForm.price} onChange={e => setNewItemForm({...newItemForm, price: e.target.value})} className="w-full p-2.5 bg-indigo-50 rounded-xl outline-none font-black text-sm text-red-600 border-2 border-indigo-200" placeholder="ราคา" />
+                                            <div className="flex gap-2">
+                                                <button onClick={() => { setShowAddCategory(false); setNewCatName(''); setNewItemForm({name:'',price:''}); }} className="flex-1 py-2.5 bg-slate-100 rounded-xl font-bold text-slate-400 text-sm active-scale">ยกเลิก</button>
+                                                <button onClick={addNewCategory} className="flex-1 py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-sm active-scale">สร้างหมวดหมู่</button>
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <button onClick={() => setShowAddCategory(true)} className="w-full py-4 bg-white rounded-3xl border-2 border-dashed border-indigo-200 text-indigo-600 font-bold text-sm flex items-center justify-center gap-2 active-scale">
+                                            <Icon name="PlusCircle" size={18} /> เพิ่มหมวดหมู่ใหม่
+                                        </button>
+                                    )}
+
+                                    {/* Reset menu */}
+                                    <button onClick={resetMenu} className="w-full py-3 text-slate-400 font-bold text-xs flex items-center justify-center gap-2 active-scale">
+                                        <Icon name="RefreshCw" size={14} /> รีเซ็ตเมนูเริ่มต้น
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ====== DAILY SALES SUMMARY MODAL ====== */}
+                    {showSalesSummary && (
+                        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[100] flex items-start justify-center overflow-y-auto">
+                            <div className="bg-[#f8fafc] w-full max-w-md min-h-screen animate-in pb-12">
+                                {/* Header */}
+                                <div className="sticky top-0 z-10 bg-white border-b border-slate-100 p-4 flex justify-between items-center shadow-sm">
+                                    <h2 className="text-lg font-black text-slate-800 flex items-center gap-2">
+                                        <Icon name="TrendingUp" size={18} className="text-emerald-500" /> สรุปยอดขายรายวัน
+                                    </h2>
+                                    <button onClick={() => setShowSalesSummary(false)} className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center active-scale"><Icon name="X" size={20} /></button>
+                                </div>
+
+                                <div className="p-4 space-y-6">
+                                    {/* Date Picker */}
+                                    <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm flex items-center justify-between gap-4">
+                                        <div className="flex items-center gap-2 text-slate-500 font-bold text-sm">
+                                            <Icon name="Calendar" size={18} /> เลือกวันที่:
+                                        </div>
+                                        <input type="date" value={salesDate} onChange={e => setSalesDate(e.target.value)} className="p-2 bg-slate-50 border border-slate-200 rounded-xl outline-none font-bold text-slate-700" />
+                                    </div>
+
+                                    {salesLoading ? (
+                                        <div className="text-center py-12 flex flex-col items-center justify-center gap-3">
+                                            <div className="spinner"></div>
+                                            <p className="font-bold text-slate-400 text-sm">กำลังคำนวณยอดขาย...</p>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            {/* Statistics Grid */}
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <div className="col-span-2 bg-gradient-to-br from-emerald-600 to-teal-700 p-6 rounded-[2rem] text-white shadow-xl text-center">
+                                                    <p className="text-emerald-100 font-bold text-xs uppercase tracking-wider mb-1">ยอดขายรวมวันนี้</p>
+                                                    <p className="text-4xl font-black">฿{salesData.reduce((sum, item) => sum + Number(item.total), 0)}</p>
+                                                    <p className="text-[10px] text-emerald-200 mt-2 font-bold">{salesData.length} บิลออเดอร์</p>
+                                                </div>
+                                                <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm text-center">
+                                                    <p className="text-slate-400 font-bold text-xs">ชำระด้วยเงินสด 💵</p>
+                                                    <p className="text-xl font-black text-slate-700 mt-1">
+                                                        ฿{salesData.filter(s => s.payment_method === 'cash').reduce((sum, s) => sum + Number(s.total), 0)}
+                                                    </p>
+                                                </div>
+                                                <div className="bg-white p-4 rounded-3xl border border-slate-100 shadow-sm text-center">
+                                                    <p className="text-slate-400 font-bold text-xs">ชำระด้วยเงินโอน 💳</p>
+                                                    <p className="text-xl font-black text-slate-700 mt-1">
+                                                        ฿{salesData.filter(s => s.payment_method === 'transfer').reduce((sum, s) => sum + Number(s.total), 0)}
+                                                    </p>
+                                                </div>
+                                            </div>
+
+                                            {/* Best Selling Items Section */}
+                                            <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
+                                                <h3 className="font-black text-sm mb-4 flex items-center gap-2 text-slate-700">
+                                                    <Icon name="Star" size={16} className="text-amber-500 fill-current" /> เมนูขายดีวันนี้
+                                                </h3>
+                                                {(() => {
+                                                    const counts = {};
+                                                    salesData.forEach(sale => {
+                                                        (sale.items || []).forEach(item => {
+                                                            counts[item.name] = (counts[item.name] || 0) + (item.quantity || 1);
+                                                        });
+                                                    });
+                                                    const sortedItems = Object.entries(counts)
+                                                        .sort((a, b) => b[1] - a[1])
+                                                        .slice(0, 5);
+
+                                                    if (sortedItems.length === 0) {
+                                                        return <p className="text-center text-slate-400 font-bold text-xs py-4">ไม่มีข้อมูลการขายในวันนี้</p>;
+                                                    }
+
+                                                    const maxQty = sortedItems[0] ? sortedItems[0][1] : 1;
+
+                                                    return (
+                                                        <div className="space-y-4">
+                                                            {sortedItems.map(([name, qty]) => {
+                                                                const pct = Math.min(100, Math.round((qty / maxQty) * 100));
+                                                                return (
+                                                                    <div key={name} className="space-y-1">
+                                                                        <div className="flex justify-between font-bold text-xs text-slate-600">
+                                                                            <span>{name}</span>
+                                                                            <span className="text-red-600 font-black">{qty} ที่</span>
+                                                                        </div>
+                                                                        <div className="w-full bg-slate-50 h-2.5 rounded-full overflow-hidden">
+                                                                            <div className="bg-gradient-to-r from-red-500 to-orange-500 h-full rounded-full" style={{ width: `${pct}%` }}></div>
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })}
+                                                        </div>
+                                                    );
+                                                })()}
+                                            </div>
+
+                                            {/* Recent Transactions List */}
+                                            <div className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm">
+                                                <h3 className="font-black text-sm mb-4 text-slate-700 font-black border-l-4 border-emerald-500 pl-3">รายการธุรกรรมล่าสุด</h3>
+                                                {salesData.length === 0 ? (
+                                                    <p className="text-center text-slate-400 font-bold text-xs py-8">ไม่มีประวัติบิลในวันที่เลือก</p>
+                                                ) : (
+                                                    <div className="divide-y divide-slate-50 max-h-[300px] overflow-y-auto no-scrollbar">
+                                                        {salesData.map(sale => (
+                                                            <div key={sale.id} onClick={() => setSelectedReceiptForView(sale)} className="py-3 flex justify-between items-center cursor-pointer hover:bg-slate-50 px-2 rounded-xl transition-all">
+                                                                <div>
+                                                                    <p className="font-bold text-xs text-slate-800">{sale.order_id} (โต๊ะ {sale.table_number})</p>
+                                                                    <p className="text-[9px] text-slate-400 font-bold mt-0.5">
+                                                                        {new Date(sale.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} • {sale.payment_method === 'cash' ? '💵 เงินสด' : '💳 เงินโอน'}
+                                                                    </p>
+                                                                </div>
+                                                                <div className="text-right">
+                                                                    <p className="font-black text-sm text-red-600">฿{sale.total}</p>
+                                                                    <p className="text-[8px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full font-bold inline-block mt-0.5">กดดูบิล</p>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ====== HISTORY RECEIPT VIEW MODAL ====== */}
+                    {selectedReceiptForView && (
+                        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[110] flex items-center justify-center p-4 overflow-y-auto">
+                            <div className="bg-white w-full max-w-sm rounded-[3rem] shadow-2xl overflow-hidden animate-in p-6 relative">
+                                <button onClick={() => setSelectedReceiptForView(null)} className="absolute top-4 right-4 w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center active-scale z-10"><Icon name="X" size={20} /></button>
+                                <h3 className="font-black text-sm mb-4 text-center text-slate-500">ประวัติบิล {selectedReceiptForView.order_id}</h3>
+                                
+                                {/* Scrollable receipt inside history reprint */}
+                                <div className="receipt-preview-container mb-4">
+                                    <div className="receipt-print-area receipt-font shadow-inner" ref={historyReceiptRef}>
+                                        <div className="text-center" style={{ marginBottom: '20px' }}>
+                                            <h3 className="font-black text-red-700 leading-none tracking-tighter" style={{ fontSize: '42px', marginBottom: '4px' }}>แม่บุญส่ง</h3>
+                                        </div>
+                                        <div className="dashed-line"></div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                            <span className="bg-slate-900 text-white rounded-full uppercase tracking-widest font-bold" style={{ fontSize: '11px', padding: '3px 12px' }}>TABLE {selectedReceiptForView.table_number}</span>
+                                            <span className="text-slate-300 font-bold" style={{ fontSize: '11px' }}>{selectedReceiptForView.order_id}</span>
+                                        </div>
+                                        <p className="text-slate-400" style={{ fontSize: '10px', marginBottom: '16px' }}>{new Date(selectedReceiptForView.created_at).toLocaleString('th-TH')}</p>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid #f1f5f9', paddingBottom: '6px', marginBottom: '12px' }}>
+                                            <span className="font-black text-slate-300 uppercase" style={{ fontSize: '9px', letterSpacing: '0.15em' }}>รายการอาหาร</span>
+                                            <span className="font-black text-slate-300 uppercase" style={{ fontSize: '9px', letterSpacing: '0.15em' }}>รวม</span>
+                                        </div>
+                                        <div style={{ marginBottom: '16px' }}>
+                                            {(selectedReceiptForView.items || []).map((item, i) => (
+                                                <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', marginBottom: '10px' }}>
+                                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                                        <p className="font-bold text-slate-800" style={{ fontSize: '14px', lineHeight: '1.3', wordBreak: 'break-word' }}>{item.name}</p>
+                                                        {item.details && <p className="font-bold text-red-500" style={{ fontSize: '9px', marginTop: '2px', lineHeight: '1.3' }}>{item.details.join(', ')}</p>}
+                                                        <p className="font-bold text-slate-400 uppercase" style={{ fontSize: '10px', marginTop: '2px' }}>฿{item.price} x {item.quantity}</p>
+                                                    </div>
+                                                    <span className="font-black text-slate-900" style={{ fontSize: '16px', whiteSpace: 'nowrap' }}>฿{item.price * item.quantity}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <div className="dashed-line"></div>
+                                        <div style={{ marginBottom: '12px' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <span className="font-bold text-slate-400 uppercase" style={{ fontSize: '10px', letterSpacing: '0.15em' }}>ชำระโดย</span>
+                                                <span className="font-bold text-slate-800 uppercase" style={{ fontSize: '13px' }}>{selectedReceiptForView.payment_method === 'cash' ? 'เงินสด (CASH)' : 'เงินโอน (TRANSFER)'}</span>
+                                            </div>
+                                            {selectedReceiptForView.payment_method === 'cash' && selectedReceiptForView.received_amount && (
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f8fafc', paddingTop: '6px', marginTop: '6px' }}>
+                                                    <span className="text-slate-400" style={{ fontSize: '11px' }}>รับเงินมา:</span>
+                                                    <span className="text-slate-400" style={{ fontSize: '11px' }}>฿{Number(selectedReceiptForView.received_amount).toFixed(2)}</span>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '2px solid #f1f5f9', paddingTop: '12px' }}>
+                                            <span className="font-bold text-slate-400 uppercase" style={{ fontSize: '11px', letterSpacing: '0.15em' }}>ยอดสุทธิ</span>
+                                            <span className="font-black text-red-700" style={{ fontSize: '36px', lineHeight: 1 }}>฿{selectedReceiptForView.total}</span>
+                                        </div>
+                                        {selectedReceiptForView.payment_method === 'cash' && selectedReceiptForView.received_amount && selectedReceiptForView.change_amount !== null && (
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '2px dashed #dcfce7', paddingTop: '10px', marginTop: '10px' }}>
+                                                <span className="font-black text-green-600 uppercase" style={{ fontSize: '11px', letterSpacing: '0.15em' }}>เงินทอน:</span>
+                                                <span className="font-black text-green-600" style={{ fontSize: '28px', lineHeight: 1 }}>฿{Number(selectedReceiptForView.change_amount).toFixed(2)}</span>
+                                            </div>
+                                        )}
+                                        {selectedReceiptForView.payment_method === 'transfer' && (
+                                            <div style={{ borderTop: '2px dashed #bfdbfe', paddingTop: '14px', marginTop: '14px', textAlign: 'center' }}>
+                                                <p className="font-bold text-slate-400 uppercase" style={{ fontSize: '9px', letterSpacing: '0.15em', marginBottom: '4px' }}>โอนเข้าบัญชี</p>
+                                                <p className="font-black text-blue-600" style={{ fontSize: '16px', letterSpacing: '0.1em' }}>389-7-20852-0</p>
+                                                <p className="font-bold text-slate-400" style={{ fontSize: '9px', marginTop: '2px' }}>ธนาคารกรุงเทพ • คุณแม่บุญส่ง</p>
+                                            </div>
+                                        )}
+                                        <div style={{ textAlign: 'center', borderTop: '2px dashed #f1f5f9', paddingTop: '16px', marginTop: '16px' }}>
+                                            <div className="font-black text-red-500" style={{ fontSize: '20px', marginBottom: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
+                                                <Icon name="Heart" size={18} /> ขอบคุณครับ <Icon name="Heart" size={18} />
+                                            </div>
+                                            <p className="font-bold text-slate-300 uppercase" style={{ fontSize: '8px', letterSpacing: '0.25em', marginTop: '6px' }}>Tasty • Fresh • Best Quality</p>
+                                        </div>
+                                        <div className="receipt-zigzag"></div>
+                                    </div>
+                                </div>
+
+                                <div className="flex gap-2">
+                                    <button onClick={async () => {
+                                        if (!historyReceiptRef.current) return;
+                                        setIsProcessing(true);
+                                        try {
+                                            const el = historyReceiptRef.current;
+                                            const origMaxW = el.style.maxWidth;
+                                            const origW = el.style.width;
+                                            el.style.maxWidth = 'none';
+                                            el.style.width = '420px';
+                                            const canvas = await html2canvas(el, { scale: 2.5, backgroundColor: '#ffffff', useCORS: true });
+                                            el.style.maxWidth = origMaxW || '';
+                                            el.style.width = origW || '';
+                                            const link = document.createElement('a');
+                                            link.download = `Receipt-History-${selectedReceiptForView.order_id}.png`;
+                                            link.href = canvas.toDataURL("image/png");
+                                            link.click();
+                                        } catch (e) { console.error(e); } finally { setIsProcessing(false); }
+                                    }} disabled={isProcessing} className="flex-1 py-4 bg-slate-900 text-white rounded-2xl font-black text-sm active-scale flex items-center justify-center gap-2">
+                                        <Icon name="Download" size={16} /> {isProcessing ? "เซฟ..." : "โหลดบิล"}
+                                    </button>
+                                    <button onClick={() => setSelectedReceiptForView(null)} className="flex-1 py-4 bg-slate-100 text-slate-500 rounded-2xl font-black text-sm active-scale">ปิด</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ====== CUSTOM CONFIRM MODAL ====== */}
+                    {confirmModal && (
+                        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[200] flex items-center justify-center p-6">
+                            <div className="bg-white w-full max-w-xs rounded-[2rem] shadow-2xl p-7 text-center animate-in">
+                                <div className="w-14 h-14 bg-red-50 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                                    <Icon name="Trash2" size={24} className="text-red-500" />
+                                </div>
+                                <p className="font-bold text-lg text-slate-800 mb-6 leading-snug">{confirmModal.message}</p>
+                                <div className="flex gap-3">
+                                    <button onClick={() => setConfirmModal(null)} className="flex-1 py-3.5 bg-slate-100 rounded-2xl font-black text-slate-400 active-scale">ยกเลิก</button>
+                                    <button onClick={() => { confirmModal.onConfirm(); setConfirmModal(null); }} className="flex-1 py-3.5 bg-red-600 text-white rounded-2xl font-black active-scale shadow-lg">ยืนยัน</button>
                                 </div>
                             </div>
                         </div>
